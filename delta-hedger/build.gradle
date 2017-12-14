@@ -1,23 +1,6 @@
 group 'com.skywind.trading'
 version '1.0.0'
 
-buildscript {
-    dependencies {
-        classpath("org.springframework.boot:spring-boot-gradle-plugin:1.5.9.RELEASE")
-//        classpath 'io.spring.gradle:dependency-management-plugin:1.0.0.RELEASE'
-    }
-}
-
-//apply plugin: 'io.spring.dependency-management'
-//
-//dependencyManagement {
-//    imports {
-//        mavenBom 'io.spring.platform:platform-bom:${platform-bom.version}'
-//    }
-//}
-
-
-
 dependencies {
     compile("org.springframework.boot:spring-boot-starter")
     compile project(':ib')

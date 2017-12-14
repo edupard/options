@@ -5,17 +5,38 @@ task wrapper(type: Wrapper) {
     gradleVersion = '4.4'
 }
 
-subprojects {
-    apply plugin: 'java'
+buildscript {
+    repositories {
+        mavenCentral()
+    }
+    dependencies {
+        classpath("io.spring.gradle:dependency-management-plugin:$springGradleDependencyManagementPluginVersion")
+    }
+}
 
+
+subprojects {
     buildscript {
         repositories {
             mavenCentral()
+        }
+        dependencies {
+            classpath("org.springframework.boot:spring-boot-gradle-plugin:$springBootVersion")
         }
     }
 
     repositories {
         mavenCentral()
+    }
+
+    apply plugin: 'java'
+    apply plugin: 'io.spring.dependency-management'
+    dependencyManagement {
+        imports {
+            // https://stackoverflow.com/questions/31335864/which-one-should-i-use-among-spring-boot-spring-bom-and-spring-io
+            mavenBom("io.spring.platform:platform-bom:$springPlatformBomVersion")
+//            mavenBom("org.springframework.boot:spring-boot-dependencies:$springBootVersion")
+        }
     }
 
 }
