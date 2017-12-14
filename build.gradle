@@ -1,12 +1,38 @@
-group 'com.skywind'
+group 'com.skywind.trading'
 version '1.0-SNAPSHOT'
 
 task wrapper(type: Wrapper) {
     gradleVersion = '4.4'
 }
 
-allprojects {
+subprojects {
+    apply plugin: 'java'
+
+
     repositories {
         mavenCentral()
+//        maven {
+//            url "file://D/m2repo/"
+//        }
     }
+
+    buildscript {
+        repositories {
+            mavenCentral()
+//            maven {
+//                url "file://D/m2repo/"
+//            }
+        }
+    }
+
+//    apply plugin: 'maven'
+//
+//    uploadArchives {
+//        repositories {
+//            mavenDeployer {
+//                repository(url: "file://D/m2repo/")
+//            }
+//        }
+//    }
+
 }

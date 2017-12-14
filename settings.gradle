@@ -1,3 +1,4 @@
-rootProject.name = 'root-project'
+rootProject.name = 'root'
 include 'delta-hedger'
+include 'ib'
 

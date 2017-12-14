@@ -1,0 +1,7 @@
+group 'com.skywind.trading'
+version '1.0.0'
+
+dependencies {
+    testCompile("junit:junit")
+    compile files('../libs/TwsApi_9_73.jar')
+}
