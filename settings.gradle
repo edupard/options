@@ -1,4 +1,6 @@
 rootProject.name = 'root'
 include 'delta-hedger'
 include 'ib'
+include 'spring-akka-integration'
+include 'spring-javafx-integration'
 

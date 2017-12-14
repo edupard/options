@@ -2,9 +2,11 @@ group 'com.skywind.trading'
 version '1.0.0'
 
 dependencies {
-    compile("org.springframework.boot:spring-boot-starter")
+    compile group: 'org.springframework.boot', name: 'spring-boot-starter'
     compile project(':ib')
-    testCompile("junit:junit")
+    compile project(':spring-akka-integration')
+    compile project(':spring-javafx-integration')
+    testCompile group: 'junit', name: 'junit'
 }
 
 

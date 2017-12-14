@@ -1,0 +1,8 @@
+group 'com.skywind.trading'
+version '1.0-SNAPSHOT'
+
+dependencies {
+    compile group: 'org.springframework.boot', name: 'spring-boot'
+    compile project(':ib')
+    testCompile group: 'junit', name: 'junit'
+}
