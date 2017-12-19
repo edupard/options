@@ -2,6 +2,9 @@ group 'com.skywind.trading'
 version '1.0.0'
 
 dependencies {
-    testCompile("junit:junit")
+    compile project(':spring-akka-integration')
     compile files('../libs/TwsApi_9_73.jar')
+    compile group: 'org.slf4j', name: 'slf4j-api'
+    testCompile("junit:junit")
+
 }

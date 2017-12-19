@@ -5,3 +5,4 @@ gradle
 /gradlew.bat
 build
 out
+/delta-hedger/data

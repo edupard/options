@@ -2,6 +2,7 @@ group 'com.skywind.trading'
 version '1.0.0'
 
 dependencies {
+    compile group: 'org.apache.commons', name: 'commons-csv', version: "$commonsCsvVersion"
     compile group: 'org.springframework.boot', name: 'spring-boot-starter'
     compile project(':ib')
     compile project(':spring-akka-integration')

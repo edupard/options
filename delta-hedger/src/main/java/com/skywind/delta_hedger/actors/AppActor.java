@@ -1,28 +1,27 @@
 package com.skywind.delta_hedger.actors;
 
-import akka.actor.ActorSystem;
+
+import akka.actor.*;
+import akka.actor.SupervisorStrategy.Directive;
+import akka.japi.Function;
 import com.skywind.delta_hedger.ui.MainController;
 import com.skywind.trading.spring_akka_integration.SpringExtension;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.config.BeanDefinition;
 import org.springframework.context.annotation.Scope;
 import org.springframework.stereotype.Component;
-import static com.skywind.delta_hedger.actors.AppActor.BEAN_NAME;
-import akka.actor.AbstractActor;
-import akka.actor.ActorRef;
-import akka.actor.ActorSelection;
-import akka.actor.ActorSystem;
-import akka.actor.OneForOneStrategy;
-import akka.actor.SupervisorStrategy;
+import scala.concurrent.duration.Duration;
 
-import akka.actor.SupervisorStrategy.Directive;
-import akka.japi.Function;
-import akka.japi.pf.ReceiveBuilder;
+import static com.skywind.delta_hedger.actors.AppActor.BEAN_NAME;
 
 
 @Component(value = BEAN_NAME)
 @Scope(BeanDefinition.SCOPE_PROTOTYPE)
 public class AppActor extends AbstractActor {
+
+    private final Logger LOGGER = LoggerFactory.getLogger(AppActor.class);
 
     public static final class StartApplication {
     }
@@ -38,22 +37,39 @@ public class AppActor extends AbstractActor {
     @Autowired
     private MainController controller;
 
+    private ActorRef hedgerActor;
+
     @Override
     public Receive createReceive() {
         return receiveBuilder()
-                .match(StartApplication.class, s -> {
-                    startApplication();
+                .match(StartApplication.class, m -> {
+                    startApplication(m);
                 })
-                .matchAny(o -> recievedUnkknown(o))
+                .matchAny(m -> recievedUnkknown(m))
                 .build();
     }
 
-    private void startApplication() {
+    private final SupervisorStrategy strategy = new OneForOneStrategy(-1, Duration.Inf(),
+            new Function<Throwable, Directive>() {
+                @Override
+                public Directive apply(Throwable t) {
+                    return SupervisorStrategy.restart();
+                }
+            });
 
+    @Override
+    public SupervisorStrategy supervisorStrategy() {
+        return strategy;
     }
 
-    private void recievedUnkknown(Object o) {
+    private void startApplication(StartApplication m) {
+        hedgerActor = getContext().actorOf(springExtension.props(HedgerActor.BEAN_NAME), "hedger");
+        hedgerActor.tell(new HedgerActor.Start(), self());
+        LOGGER.debug("Started!");
+    }
 
+    private void recievedUnkknown(Object m) {
+        LOGGER.debug("Recieved unknown message: {}", m.toString());
     }
 
 
