@@ -40,7 +40,7 @@ public class Application extends AbstractJavaFxApplicationSupport {
 
     @Override
     public void start(Stage stage) throws Exception {
-        stage.setTitle("portfolio");
+        stage.setTitle("delta hedger");
         stage.getIcons().add(new Image(getClass().getClassLoader().getResourceAsStream("fxml/logo.png")));
         stage.setScene(new Scene(controller.getParent()));
         stage.setResizable(true);

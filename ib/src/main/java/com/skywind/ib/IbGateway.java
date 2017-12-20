@@ -8,6 +8,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
+import com.skywind.trading.spring_akka_integration.MessageSentToExactActorInstance;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -55,19 +56,6 @@ public class IbGateway {
         }
 
         LOGGER.debug(logTemplate.toString(), args);
-    }
-
-    public static class MessageSentToExactActorInstance {
-
-        private final UUID actorId;
-
-        public MessageSentToExactActorInstance(UUID actorId) {
-            this.actorId = actorId;
-        }
-
-        public boolean isActorInstaceEquals(UUID actorId) {
-            return this.actorId.equals(actorId);
-        }
     }
 
 

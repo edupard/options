@@ -190,7 +190,7 @@ public class StorageUtils {
         List<Trade> trades = new LinkedList<>();
         Path path = Paths.get(TRADES_FILE_PATH);
         if (Files.exists(path)) {
-            try (CSVParser reader = new CSVParser(new FileReader(TRADES_FILE_PATH), CSV_TRADES_FORMAT)) {
+            try (CSVParser reader = new CSVParser(new FileReader(TRADES_FILE_PATH), CSV_TRADES_FORMAT.withSkipHeaderRecord())) {
                 for (CSVRecord r : reader) {
                     Contract c = new Contract();
                     c.localSymbol(r.get(COLUMN_LOCAL_SYMBOL));

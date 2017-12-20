@@ -4,9 +4,12 @@ import akka.actor.AbstractActor;
 import akka.actor.OneForOneStrategy;
 import akka.actor.SupervisorStrategy;
 import com.ib.client.Contract;
+import com.ib.client.ContractDetails;
 import com.ib.client.ExecutionFilter;
 import com.skywind.delta_hedger.ui.MainController;
 import com.skywind.ib.IbGateway;
+import com.skywind.trading.spring_akka_integration.MessageSentToExactActorInstance;
+import javafx.geometry.Pos;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.beans.factory.config.BeanDefinition;
@@ -17,6 +20,7 @@ import org.slf4j.LoggerFactory;
 import scala.concurrent.duration.Duration;
 
 import java.util.*;
+import java.util.concurrent.TimeUnit;
 
 import static com.skywind.delta_hedger.actors.HedgerActor.BEAN_NAME;
 
@@ -26,7 +30,7 @@ public class HedgerActor extends AbstractActor {
     public final static String BEAN_NAME = "hedgerActor";
     private final Logger LOGGER = LoggerFactory.getLogger(HedgerActor.class);
 
-    private final UUID uuid = UUID.randomUUID();
+    private final UUID actorId = UUID.randomUUID();
     private final IbGateway ibGateway;
 
     @Value("${ib.host}")
@@ -50,7 +54,7 @@ public class HedgerActor extends AbstractActor {
 
 
     public HedgerActor() {
-        ibGateway = new IbGateway(self(), uuid);
+        ibGateway = new IbGateway(self(), actorId);
     }
 
 
@@ -61,48 +65,94 @@ public class HedgerActor extends AbstractActor {
 
     }
 
+    public static final class IrChanged {
+        private final String localSymbol;
+        private final double ir;
+
+        public IrChanged(String localSymbol, double ir) {
+            this.localSymbol = localSymbol;
+            this.ir = ir;
+        }
+    }
+
+    public static final class VolChanged {
+        private final String localSymbol;
+        private final double vol;
+
+        public VolChanged(String localSymbol, double vol) {
+            this.localSymbol = localSymbol;
+            this.vol = vol;
+        }
+    }
+
+
+    public static final class Restart extends MessageSentToExactActorInstance {
+
+        public Restart(UUID actorId) {
+            super(actorId);
+        }
+
+    }
+
+
     @Override
     public Receive createReceive() {
         return receiveBuilder()
                 .match(Start.class, m -> {
                     onStart(m);
                 })
+                .match(Restart.class, m -> {
+                    onRestart(m);
+                })
                 .match(ReloadPositions.class, m -> {
                     onReloadPositions(m);
                 })
                 .match(IbGateway.ConnectAck.class, m ->{
-                    if (m.isActorInstaceEquals(uuid)) {
+                    if (m.isActorInstaceEquals(actorId)) {
                         onConnected(m);
                     }
                 })
                 .match(IbGateway.NextValidId.class, m->{
-                    if (m.isActorInstaceEquals(uuid)) {
+                    if (m.isActorInstaceEquals(actorId)) {
                         onNextValidId(m);
                     }
                 })
                 .match(IbGateway.ExecDetails.class, m->{
-                    if (m.isActorInstaceEquals(uuid)) {
+                    if (m.isActorInstaceEquals(actorId)) {
                         onExecDetails(m);
                     }
                 })
                 .match(IbGateway.ExecDetailsEnd.class, m->{
-                    if (m.isActorInstaceEquals(uuid)) {
+                    if (m.isActorInstaceEquals(actorId)) {
                         onExecDetailsEnd(m);
                     }
                 })
                 .match(IbGateway.Position.class, m->{
-                    if (m.isActorInstaceEquals(uuid)) {
+                    if (m.isActorInstaceEquals(actorId)) {
                         onPosition(m);
                     }
                 })
                 .match(IbGateway.PositionEnd.class, m->{
-                    if (m.isActorInstaceEquals(uuid)) {
+                    if (m.isActorInstaceEquals(actorId)) {
                         onPositionEnd(m);
                     }
+                })
+                .match(IbGateway.ContractDetailsMsg.class, m->{
+                    if (m.isActorInstaceEquals(actorId)) {
+                        onContractDetails(m);
+                    }
+                })
+                .match(IrChanged.class, m->{
+                    onIrChanged(m);
+                })
+                .match(VolChanged.class, m->{
+                    onVolChanged(m);
                 })
                 .matchAny(m -> recievedUnknown(m))
                 .build();
     }
+
+
 
 
     private final SupervisorStrategy strategy = new OneForOneStrategy(-1, Duration.Inf(), (Throwable t) -> SupervisorStrategy.escalate());
@@ -112,7 +162,17 @@ public class HedgerActor extends AbstractActor {
         return strategy;
     }
 
-    private void recievedUnknown(Object m) {
+    public static final long RESTART_INTERVAL_SEC = 5l;
+
+    @Override
+    public void postRestart(Throwable thrwbl) throws Exception {
+        super.postRestart(thrwbl);
+
+        getContext().system().scheduler().scheduleOnce(Duration.create(RESTART_INTERVAL_SEC, TimeUnit.SECONDS),
+                self(),
+                new Restart(actorId),
+                getContext().dispatcher(),
+                self());
     }
 
     @Override
@@ -122,29 +182,42 @@ public class HedgerActor extends AbstractActor {
     }
 
     private void onStart(Start m) {
+        start();
+    }
+
+    private void start() {
         positions = StorageUtils.readPositions();
-        MainController.UpdateUiPositionsBatch uiUpdates = new MainController.UpdateUiPositionsBatch(false);
+        MainController.UpdateUiPositionsBatch uiUpdates = new MainController.UpdateUiPositionsBatch(true);
         for (Map.Entry<String, Position> e : positions.entrySet()) {
             uiUpdates.addAction(MainController.UpdateUiPositionsBatch.Action.UPDATE, e.getKey(), e.getValue());
         }
         for (Trade t :StorageUtils.readTrades()) {
             processedTrades.add(t.getExecId());
         }
+        controller.onPositionsUpdate(uiUpdates);
 
         ibGateway.connect(host, port, clientId);
     }
 
+    public void onRestart(Restart m) {
+        start();
+    }
+
+    private void recievedUnknown(Object m) {
+    }
+
     private void onNextValidId(IbGateway.NextValidId m) {
-        ibGateway.getClientSocket().reqExecutions(1, new ExecutionFilter());
+        onPositionsUpdate();
+        requestExecutions();
     }
 
     private void onReloadPositions(ReloadPositions m) {
         requestPositions();
     }
 
-//    private void requestExecutions() {
-//        ibGateway.getClientSocket().reqExecutions(1, new ExecutionFilter());
-//    }
+    private void requestExecutions() {
+        ibGateway.getClientSocket().reqExecutions(1, new ExecutionFilter());
+    }
 
     private List<IbGateway.Position> positionsBuffer = new LinkedList<>();
 
@@ -183,9 +256,44 @@ public class HedgerActor extends AbstractActor {
                 uiUpdates.addAction(MainController.UpdateUiPositionsBatch.Action.UPDATE, localSymbol, p);
                 positions.put(localSymbol, p);
             }
+            StorageUtils.storeTrade(m);
+            StorageUtils.storePositions(positions);
+            controller.onPositionsUpdate(uiUpdates);
+            onPositionsUpdate();
         }
-        StorageUtils.storeTrade(m);
-        StorageUtils.storePositions(positions);
+    }
+
+    private Map<Integer, String> contractDetailsRequestMap = new HashMap<>();
+    int nextContractDetailsRequestId = 1;
+
+    private void requestContractDetails() {
+        for(Map.Entry<String,Position> e : positions.entrySet()) {
+            String localSymbol = e.getKey();
+            Position p = e.getValue();
+            if (!p.isContractDetailsDefined()) {
+                contractDetailsRequestMap.put(nextContractDetailsRequestId, localSymbol);
+                ibGateway.getClientSocket().reqContractDetails(nextContractDetailsRequestId, p.getContract());
+                nextContractDetailsRequestId++;
+            }
+        }
+    }
+
+    private void onPositionsUpdate() {
+        requestContractDetails();
+    }
+
+    private void onContractDetails(IbGateway.ContractDetailsMsg m) {
+        if (contractDetailsRequestMap.containsKey(m.getReqId())) {
+            String localSymbol = contractDetailsRequestMap.get(m.getReqId());
+            if (positions.containsKey(localSymbol)) {
+                Position p = positions.get(localSymbol);
+                p.setContractDetails(m.getContractDetails());
+                MainController.UpdateUiPositionsBatch uiUpdates = new MainController.UpdateUiPositionsBatch(false);
+                uiUpdates.addAction(MainController.UpdateUiPositionsBatch.Action.UPDATE, localSymbol, p);
+                controller.onPositionsUpdate(uiUpdates);
+            }
+            contractDetailsRequestMap.remove(m.getReqId());
+        }
     }
 
     private void onExecDetailsEnd(IbGateway.ExecDetailsEnd m) {
@@ -200,41 +308,52 @@ public class HedgerActor extends AbstractActor {
     }
 
     private void onPositionEnd(IbGateway.PositionEnd m) {
-        Set<String> positionsSymbols = new HashSet<>();
+        MainController.UpdateUiPositionsBatch uiUpdates = new MainController.UpdateUiPositionsBatch(true);
 
-        MainController.UpdateUiPositionsBatch uiUpdates = new MainController.UpdateUiPositionsBatch(false);
+        Map<String, Position> oldPositions = new HashMap<>();
+        oldPositions.putAll(positions);
+        positions.clear();
 
         for (IbGateway.Position pm : positionsBuffer) {
             if (pm.getPosition() != 0.0d) {
                 Contract c = pm.getContract();
                 c.exchange(exchange);
                 String localSymbol = c.localSymbol();
-                Position p = null;
-                if (positions.containsKey(localSymbol)) {
-                    p = positions.get(localSymbol);
-                    p.setPos(pm.getPosition());
-                    p.setPosPx(pm.getPositionPrice());
+                if (!positions.containsKey(localSymbol)) {
+                    double vol = 0.0d;
+                    double ir = 0.0d;
+                    if (oldPositions.containsKey(localSymbol)) {
+                        vol = oldPositions.get(localSymbol).getVol();
+                        ir = oldPositions.get(localSymbol).getIr();
+                    }
+                    Position p = new Position(c, pm.getPosition(), pm.getPositionPrice(), vol, ir);
+                    positions.put(localSymbol, p);
+                    uiUpdates.addAction(MainController.UpdateUiPositionsBatch.Action.UPDATE, localSymbol, p);
                 }
-                else {
-                    p = new Position(c, pm.getPosition(), pm.getPositionPrice(), 0.0d, 0.0d);
-                }
-                positions.put(localSymbol, p);
-                uiUpdates.addAction(MainController.UpdateUiPositionsBatch.Action.UPDATE, localSymbol, p);
-                positionsSymbols.add(localSymbol);
             }
         }
-
-        Set<String> toDelete = new HashSet<>(positions.keySet());
-        toDelete.removeAll(positionsSymbols);
-        toDelete.stream().forEach(localSymbol->{
-            uiUpdates.addAction(MainController.UpdateUiPositionsBatch.Action.DELETE, localSymbol, positions.get(localSymbol));
-        });
-
-        //remove legacy positions
-        positions.keySet().retainAll(positionsSymbols);
-
         StorageUtils.storePositions(positions);
         positionsBuffer.clear();
+
+        onPositionsUpdate();
+        controller.onPositionsUpdate(uiUpdates);
+        controller.onPositionsReloadComplete();
+    }
+
+    private void onIrChanged(IrChanged m) {
+        if (positions.containsKey(m.localSymbol)) {
+            Position p = positions.get(m.localSymbol);
+            p.setIr(m.ir);
+            StorageUtils.storePositions(positions);
+        }
+    }
+
+    private void onVolChanged(VolChanged m) {
+        if (positions.containsKey(m.localSymbol)) {
+            Position p = positions.get(m.localSymbol);
+            p.setVol(m.vol);
+            StorageUtils.storePositions(positions);
+        }
     }
 
 }
