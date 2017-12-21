@@ -419,6 +419,26 @@ public class IbGateway {
         }
     }
 
+    public static final class HistDataUpdateMsg extends MessageSentToExactActorInstance {
+
+        private final int reqId;
+        private final Bar bar;
+
+        public HistDataUpdateMsg(int reqId, Bar bar, UUID actorId) {
+            super(actorId);
+            this.reqId = reqId;
+            this.bar = bar;
+        }
+
+        public int getReqId() {
+            return reqId;
+        }
+
+        public Bar getBar() {
+            return bar;
+        }
+    }
+
     public static final class ContractDetailsMsg extends MessageSentToExactActorInstance {
 
         private final int reqId;
@@ -913,6 +933,12 @@ public class IbGateway {
         }
 
         @Override
+        public void historicalDataUpdate(int reqId, Bar bar) {
+            log("historicalDataUpdate", reqId, bar.time(), bar.open(), bar.high(), bar.low(), bar.close(), bar.volume(), bar.count(), bar.wap());
+            parent.tell(new HistDataUpdateMsg(reqId, bar, actorId), parent);
+        }
+
+        @Override
         public void historicalDataEnd(int reqId, String startDateStr, String endDateStr) {
             log("historicalDataEnd", reqId, startDateStr, endDateStr);
             parent.tell(new HistDataEndMsg(reqId, startDateStr, endDateStr, actorId), parent);
@@ -1103,10 +1129,7 @@ public class IbGateway {
 
         }
 
-        @Override
-        public void historicalDataUpdate(int i, Bar bar) {
 
-        }
 
         @Override
         public void rerouteMktDataReq(int i, int i1, String s) {

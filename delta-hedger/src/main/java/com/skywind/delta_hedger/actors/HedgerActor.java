@@ -3,9 +3,7 @@ package com.skywind.delta_hedger.actors;
 import akka.actor.AbstractActor;
 import akka.actor.OneForOneStrategy;
 import akka.actor.SupervisorStrategy;
-import com.ib.client.Contract;
-import com.ib.client.ContractDetails;
-import com.ib.client.ExecutionFilter;
+import com.ib.client.*;
 import com.skywind.delta_hedger.ui.MainController;
 import com.skywind.ib.IbGateway;
 import com.skywind.trading.spring_akka_integration.MessageSentToExactActorInstance;
@@ -49,6 +47,9 @@ public class HedgerActor extends AbstractActor {
     @Value("${exchange}")
     private String exchange;
 
+    @Value("${ccy}")
+    private String ccy;
+
     @Autowired
     private MainController controller;
 
@@ -62,6 +63,10 @@ public class HedgerActor extends AbstractActor {
     }
 
     public static final class ReloadPositions {
+
+    }
+
+    public static final class RefreshTimebars {
 
     }
 
@@ -107,52 +112,68 @@ public class HedgerActor extends AbstractActor {
                 .match(ReloadPositions.class, m -> {
                     onReloadPositions(m);
                 })
-                .match(IbGateway.ConnectAck.class, m ->{
+                .match(IbGateway.ConnectAck.class, m -> {
                     if (m.isActorInstaceEquals(actorId)) {
                         onConnected(m);
                     }
                 })
-                .match(IbGateway.NextValidId.class, m->{
+                .match(IbGateway.NextValidId.class, m -> {
                     if (m.isActorInstaceEquals(actorId)) {
                         onNextValidId(m);
                     }
                 })
-                .match(IbGateway.ExecDetails.class, m->{
+                .match(IbGateway.ExecDetails.class, m -> {
                     if (m.isActorInstaceEquals(actorId)) {
                         onExecDetails(m);
                     }
                 })
-                .match(IbGateway.ExecDetailsEnd.class, m->{
+                .match(IbGateway.ExecDetailsEnd.class, m -> {
                     if (m.isActorInstaceEquals(actorId)) {
                         onExecDetailsEnd(m);
                     }
                 })
-                .match(IbGateway.Position.class, m->{
+                .match(IbGateway.Position.class, m -> {
                     if (m.isActorInstaceEquals(actorId)) {
                         onPosition(m);
                     }
                 })
-                .match(IbGateway.PositionEnd.class, m->{
+                .match(IbGateway.PositionEnd.class, m -> {
                     if (m.isActorInstaceEquals(actorId)) {
                         onPositionEnd(m);
                     }
                 })
-                .match(IbGateway.ContractDetailsMsg.class, m->{
+                .match(IbGateway.ContractDetailsMsg.class, m -> {
                     if (m.isActorInstaceEquals(actorId)) {
                         onContractDetails(m);
                     }
                 })
-                .match(IrChanged.class, m->{
+                .match(IrChanged.class, m -> {
                     onIrChanged(m);
                 })
-                .match(VolChanged.class, m->{
+                .match(VolChanged.class, m -> {
                     onVolChanged(m);
+                })
+                .match(RefreshTimebars.class, m -> {
+                    onRefreshTimebars(m);
+                })
+                .match(IbGateway.HistDataMsg.class, m -> {
+                    if (m.isActorInstaceEquals(actorId)) {
+                        onHistDataMsg(m);
+                    }
+                })
+                .match(IbGateway.HistDataUpdateMsg.class, m -> {
+                    if (m.isActorInstaceEquals(actorId)) {
+                        onHistDataUpdateMsg(m);
+                    }
+                })
+                .match(IbGateway.HistDataEndMsg.class, m -> {
+                    if (m.isActorInstaceEquals(actorId)) {
+                        onHistDataEndMsg(m);
+                    }
                 })
                 .matchAny(m -> recievedUnknown(m))
                 .build();
     }
-
-
 
 
     private final SupervisorStrategy strategy = new OneForOneStrategy(-1, Duration.Inf(), (Throwable t) -> SupervisorStrategy.escalate());
@@ -191,7 +212,7 @@ public class HedgerActor extends AbstractActor {
         for (Map.Entry<String, Position> e : positions.entrySet()) {
             uiUpdates.addAction(MainController.UpdateUiPositionsBatch.Action.UPDATE, e.getKey(), e.getValue());
         }
-        for (Trade t :StorageUtils.readTrades()) {
+        for (Trade t : StorageUtils.readTrades()) {
             processedTrades.add(t.getExecId());
         }
         controller.onPositionsUpdate(uiUpdates);
@@ -241,8 +262,7 @@ public class HedgerActor extends AbstractActor {
             if (positions.containsKey(localSymbol)) {
                 p = positions.get(localSymbol);
                 p.updatePosition(m);
-            }
-            else {
+            } else {
                 Contract c = m.getContract();
                 double pos = Utils.getPosition(m);
                 double posPx = m.getExecution().price();
@@ -251,8 +271,7 @@ public class HedgerActor extends AbstractActor {
             if (p.isZero()) {
                 uiUpdates.addAction(MainController.UpdateUiPositionsBatch.Action.DELETE, localSymbol, p);
                 positions.remove(localSymbol);
-            }
-            else {
+            } else {
                 uiUpdates.addAction(MainController.UpdateUiPositionsBatch.Action.UPDATE, localSymbol, p);
                 positions.put(localSymbol, p);
             }
@@ -263,11 +282,213 @@ public class HedgerActor extends AbstractActor {
         }
     }
 
+    public static final class Timebar {
+        private final String localSymbol;
+        private final String duration;
+        private final String barTime;
+        private final double open;
+        private final double high;
+        private final double low;
+        private final double close;
+        private final double volume;
+
+        public Timebar(String localSymbol, String duration, String barTime, double open, double high, double low, double close, double volume) {
+            this.localSymbol = localSymbol;
+            this.duration = duration;
+            this.barTime = barTime;
+            this.open = open;
+            this.high = high;
+            this.low = low;
+            this.close = close;
+            this.volume = volume;
+        }
+
+        public String getLocalSymbol() {
+            return localSymbol;
+        }
+
+        public String getBarTime() {
+            return barTime;
+        }
+
+        public double getOpen() {
+            return open;
+        }
+
+        public double getHigh() {
+            return high;
+        }
+
+        public double getLow() {
+            return low;
+        }
+
+        public double getClose() {
+            return close;
+        }
+
+        public double getVolume() {
+            return volume;
+        }
+
+        public String getDuration() {
+            return duration;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (o == null || getClass() != o.getClass()) return false;
+            Timebar timebar = (Timebar) o;
+            return Objects.equals(localSymbol, timebar.localSymbol) &&
+                    Objects.equals(duration, timebar.duration) &&
+                    Objects.equals(barTime, timebar.barTime);
+        }
+
+        @Override
+        public int hashCode() {
+
+            return Objects.hash(localSymbol, duration, barTime);
+        }
+    }
+
+    public static final class TimebarArray {
+        private final List<Timebar> bars = new LinkedList<>();
+
+        public void onTimeBar(Timebar tb) {
+            bars.add(tb);
+        }
+    }
+
+    public static final class TimeBarRequest {
+        private final String localSymbol;
+        private final String duration;
+
+        public TimeBarRequest(String localSymbol, String duration) {
+            this.localSymbol = localSymbol;
+            this.duration = duration;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (o == null || getClass() != o.getClass()) return false;
+            TimeBarRequest that = (TimeBarRequest) o;
+            return Objects.equals(localSymbol, that.localSymbol) &&
+                    Objects.equals(duration, that.duration);
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(localSymbol, duration);
+        }
+
+        public String getLocalSymbol() {
+            return localSymbol;
+        }
+
+        public String getDuration() {
+            return duration;
+        }
+    }
+
+    private Map<Integer, TimeBarRequest> timeBarsRequestMap = new HashMap<>();
+    private Map<TimeBarRequest, TimebarArray> currentBars = new HashMap<>();
+    int currentHistDataRequestId = 1;
+
+    private void onHistDataEndMsg(IbGateway.HistDataEndMsg m) {
+    }
+
+    private void onHistDataUpdateMsg(IbGateway.HistDataUpdateMsg m) {
+        onTimeBar(m.getReqId(), m.getBar());
+    }
+
+    private void onTimeBar(int reqId, Bar bar) {
+        TimeBarRequest r = timeBarsRequestMap.get(reqId);
+        if (r == null) {
+            return;
+        }
+        Timebar tb = new Timebar(
+                r.localSymbol,
+                r.duration,
+                bar.time(),
+                bar.open(),
+                bar.high(),
+                bar.low(),
+                bar.close(),
+                bar.volume()
+        );
+        TimebarArray arr = currentBars.get(r);
+        if (arr == null) {
+            arr = new TimebarArray();
+            currentBars.put(r, arr);
+        }
+        arr.onTimeBar(tb);
+        controller.onTimeBar(tb);
+    }
+
+    private void onHistDataMsg(IbGateway.HistDataMsg m) {
+        onTimeBar(m.getReqId(), m.getBar());
+    }
+
+    private void onRefreshTimebars(RefreshTimebars m) {
+        refreshTimebars(true);
+    }
+
+    private void refreshTimebars(boolean fullUpdate) {
+        if (fullUpdate) {
+            for (Integer reqId : timeBarsRequestMap.keySet()) {
+                ibGateway.getClientSocket().cancelHistoricalData(reqId);
+            }
+            timeBarsRequestMap.clear();
+            currentBars.clear();
+            controller.onClearTimeBars();
+        }
+        Set<TimeBarRequest> requests = new HashSet<>();
+
+        for (Map.Entry<String, Position> e : positions.entrySet()) {
+            String localSymbol = e.getKey();
+            Position p = e.getValue();
+            if (p.getContract().secType() == Types.SecType.FUT) {
+                requests.add(new TimeBarRequest(localSymbol, "4 hours"));
+            } else if (p.getContract().secType() == Types.SecType.OPT) {
+                if (p.isContractDetailsDefined()) {
+                    requests.add(new TimeBarRequest(p.getContractDetails().underSymbol(), "4 hours"));
+                }
+            }
+        }
+        //unsubscribe for invalid requests
+        Set<TimeBarRequest> requestsToTerminate = new HashSet<>();
+        requestsToTerminate.addAll(timeBarsRequestMap.values());
+        requestsToTerminate.removeAll(requests);
+
+        for (Map.Entry<Integer, TimeBarRequest> e : timeBarsRequestMap.entrySet()) {
+            if (requestsToTerminate.contains(e.getValue())) {
+                ibGateway.getClientSocket().cancelHistoricalData(e.getKey());
+            }
+        }
+        controller.onRemoveTimeBars(requestsToTerminate);
+
+
+        //Request only new codes
+        requests.removeAll(timeBarsRequestMap.values());
+        for (TimeBarRequest r : requests) {
+            Contract c = new Contract();
+            c.localSymbol(r.localSymbol);
+            c.secType(Types.SecType.FUT);
+            c.exchange(exchange);
+            c.currency(ccy);
+            ibGateway.getClientSocket().reqHistoricalData(currentHistDataRequestId, c, "", "2 D", r.duration, "TRADES", 0, 1, true, null);
+            timeBarsRequestMap.put(currentHistDataRequestId, r);
+            currentHistDataRequestId++;
+        }
+    }
+
     private Map<Integer, String> contractDetailsRequestMap = new HashMap<>();
     int nextContractDetailsRequestId = 1;
 
     private void requestContractDetails() {
-        for(Map.Entry<String,Position> e : positions.entrySet()) {
+        for (Map.Entry<String, Position> e : positions.entrySet()) {
             String localSymbol = e.getKey();
             Position p = e.getValue();
             if (!p.isContractDetailsDefined()) {
@@ -280,6 +501,7 @@ public class HedgerActor extends AbstractActor {
 
     private void onPositionsUpdate() {
         requestContractDetails();
+        refreshTimebars(false);
     }
 
     private void onContractDetails(IbGateway.ContractDetailsMsg m) {

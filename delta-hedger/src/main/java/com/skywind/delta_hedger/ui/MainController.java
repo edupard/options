@@ -26,10 +26,7 @@ import org.springframework.context.ApplicationContext;
 import org.springframework.context.ConfigurableApplicationContext;
 
 import javax.annotation.PostConstruct;
-import java.util.HashMap;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 public class MainController {
     @Autowired
@@ -71,6 +68,33 @@ public class MainController {
     private final FilteredList<PositionEntry> filteredPositionsData = new FilteredList<>(positionsData, p -> true);
     private final SortedList<PositionEntry> sortedPositionsData = new SortedList<>(filteredPositionsData);
 
+
+
+    @FXML
+    private TableView<TimeBarEntry> tblTimeBars;
+    @FXML
+    private TableColumn<TimeBarEntry, String> colTbCode;
+    @FXML
+    private TableColumn<TimeBarEntry, String> colTbDuration;
+    @FXML
+    private TableColumn<TimeBarEntry, String> colTbBarTime;
+    @FXML
+    private TableColumn<TimeBarEntry, Double> colTbOpen;
+    @FXML
+    private TableColumn<TimeBarEntry, Double> colTbHigh;
+    @FXML
+    private TableColumn<TimeBarEntry, Double> colTbLow;
+    @FXML
+    private TableColumn<TimeBarEntry, Double> colTbClose;
+    @FXML
+    private TableColumn<TimeBarEntry, Double> colTbVolume;
+
+    private Map<HedgerActor.Timebar, TimeBarEntry> timeBarsDataMap = new HashMap<>();
+    private final ObservableList<TimeBarEntry> timeBarData = FXCollections.observableArrayList();
+    private final FilteredList<TimeBarEntry> filteredTimeBarData = new FilteredList<>(timeBarData, p -> true);
+    private final SortedList<TimeBarEntry> sortedTimeBarData = new SortedList<>(filteredTimeBarData);
+
+
     public Parent getParent() {
         return anchor;
     }
@@ -79,6 +103,41 @@ public class MainController {
         ((ConfigurableApplicationContext) applicationContext).close();
     }
 
+    public void onTimeBar(HedgerActor.Timebar tb) {
+        if (timeBarsDataMap.containsKey(tb)) {
+            TimeBarEntry timeBarEntry = timeBarsDataMap.get(tb);
+            timeBarEntry.updateUi(tb);
+            timeBarsDataMap.put(tb, timeBarEntry);
+        }
+        else {
+            TimeBarEntry timeBarEntry = new TimeBarEntry();
+            timeBarEntry.updateUi(tb);
+            timeBarData.add(timeBarEntry);
+            timeBarsDataMap.put(tb, timeBarEntry);
+        }
+    }
+
+    public void onClearTimeBars() {
+        Platform.runLater(()-> {
+            timeBarsDataMap.clear();
+            timeBarData.clear();
+        });
+    }
+
+    public void onRemoveTimeBars(Set<HedgerActor.TimeBarRequest> requestsToTerminate) {
+        for (HedgerActor.TimeBarRequest r : requestsToTerminate) {
+            List<HedgerActor.Timebar> toRemove = new LinkedList<>();
+            for (Map.Entry<HedgerActor.Timebar, TimeBarEntry> e : timeBarsDataMap.entrySet()) {
+                if (e.getKey().getLocalSymbol().equals(r.getLocalSymbol()) &&
+                 e.getKey().getDuration().equals(r.getDuration())) {
+                    timeBarData.remove(e.getValue());
+                }
+            }
+            for (HedgerActor.Timebar tb : toRemove) {
+                timeBarsDataMap.remove(tb);
+            }
+        }
+    }
 
 
     public static final class UpdateUiPositionsBatch {
@@ -175,11 +234,6 @@ public class MainController {
         colPos.setCellValueFactory(cellData -> cellData.getValue().posProperty().asObject());
         colPos.setCellFactory(new FormatedCellFactory<>("%.0f"));
 
-
-
-
-
-
         colIr.setCellValueFactory(cellData -> {
             PositionEntry pe = cellData.getValue();
             pe.irProperty().addListener(new ChangeListener() {
@@ -208,6 +262,31 @@ public class MainController {
 
         sortedPositionsData.comparatorProperty().bind(tblPositions.comparatorProperty());
         tblPositions.setItems(sortedPositionsData);
+
+
+        colTbCode.setCellValueFactory(cellData -> cellData.getValue().localSymbolProperty());
+        colTbDuration.setCellValueFactory(cellData -> cellData.getValue().durationProperty());
+        colTbBarTime.setCellValueFactory(cellData -> cellData.getValue().barTimeProperty());
+
+        colTbOpen.setCellValueFactory(cellData -> cellData.getValue().openProperty().asObject());
+        colTbOpen.setCellFactory(new FormatedCellFactory<>("%.3f"));
+
+        colTbHigh.setCellValueFactory(cellData -> cellData.getValue().highProperty().asObject());
+        colTbHigh.setCellFactory(new FormatedCellFactory<>("%.3f"));
+
+        colTbLow.setCellValueFactory(cellData -> cellData.getValue().lowProperty().asObject());
+        colTbLow.setCellFactory(new FormatedCellFactory<>("%.3f"));
+
+        colTbClose.setCellValueFactory(cellData -> cellData.getValue().closeProperty().asObject());
+        colTbClose.setCellFactory(new FormatedCellFactory<>("%.3f"));
+
+        colTbVolume.setCellValueFactory(cellData -> cellData.getValue().volumeProperty().asObject());
+        colTbVolume.setCellFactory(new FormatedCellFactory<>("%.0f"));
+
+
+        sortedTimeBarData.comparatorProperty().bind(tblTimeBars.comparatorProperty());
+        tblTimeBars.setItems(sortedTimeBarData);
+
 
     }
 
@@ -253,6 +332,10 @@ public class MainController {
     @FXML
     public void onReloadPositions() {
         hedgerActor.tell(new HedgerActor.ReloadPositions(), null);
+    }
 
+    @FXML
+    public void onRefreshTimebars() {
+        hedgerActor.tell(new HedgerActor.RefreshTimebars(), null);
     }
 }

@@ -7,22 +7,35 @@
 <?import javafx.scene.layout.*?>
 
 
-<AnchorPane fx:id="anchor" prefHeight="400.0" prefWidth="1067.0" xmlns="http://javafx.com/javafx/8" xmlns:fx="http://javafx.com/fxml/1" fx:controller="com.skywind.delta_hedger.ui.MainController">
+<AnchorPane fx:id="anchor" prefHeight="710.0" prefWidth="1067.0" xmlns="http://javafx.com/javafx/8" xmlns:fx="http://javafx.com/fxml/1" fx:controller="com.skywind.delta_hedger.ui.MainController">
    <children>
       <Button layoutX="57.0" layoutY="244.0" mnemonicParsing="false" onAction="#onReloadPositions" text="Reload positions" />
       <TableView fx:id="tblPositions" editable="true" layoutX="57.0" layoutY="30.0" prefHeight="200.0" prefWidth="974.0">
         <columns>
             <TableColumn fx:id="colSelected" prefWidth="60.0" text="selected" />
-          <TableColumn fx:id="colCode" prefWidth="90.0" text="code" />
-          <TableColumn fx:id="colUnderCode" prefWidth="89.0" text="underlying" />
-            <TableColumn fx:id="colExpiry" prefWidth="114.0" text="expiry" />
-            <TableColumn fx:id="colDays" prefWidth="41.0" text="days" />
-            <TableColumn fx:id="colStrike" prefWidth="91.0" text="strike" />
-            <TableColumn fx:id="colSecType" prefWidth="53.0" text="c / p" />
-            <TableColumn fx:id="colPos" prefWidth="76.0" text="pos" />
-            <TableColumn fx:id="colIr" prefWidth="67.0" text="ir" />
-            <TableColumn fx:id="colVol" prefWidth="69.0" text="vol" />
+          <TableColumn fx:id="colCode" prefWidth="136.0" text="code" />
+          <TableColumn fx:id="colUnderCode" minWidth="2.0" prefWidth="83.0" text="underlying" />
+            <TableColumn fx:id="colExpiry" prefWidth="89.0" text="expiry" />
+            <TableColumn fx:id="colDays" prefWidth="52.0" text="days" />
+            <TableColumn fx:id="colStrike" prefWidth="84.0" text="strike" />
+            <TableColumn fx:id="colSecType" prefWidth="47.0" text="c / p" />
+            <TableColumn fx:id="colPos" prefWidth="79.0" text="pos" />
+            <TableColumn fx:id="colIr" prefWidth="61.0" text="ir" />
+            <TableColumn fx:id="colVol" prefWidth="59.0" text="vol" />
         </columns>
+      </TableView>
+      <Button layoutX="57.0" layoutY="505.0" mnemonicParsing="false" onAction="#onRefreshTimebars" text="Refresh timebars" />
+      <TableView fx:id="tblTimeBars" editable="true" layoutX="57.0" layoutY="286.0" prefHeight="200.0" prefWidth="974.0">
+         <columns>
+            <TableColumn fx:id="colTbCode" prefWidth="136.0" text="code" />
+            <TableColumn fx:id="colTbDuration" minWidth="2.0" prefWidth="73.0" text="duration" />
+            <TableColumn fx:id="colTbBarTime" prefWidth="118.0" text="time" />
+            <TableColumn fx:id="colTbOpen" prefWidth="98.0" text="open" />
+            <TableColumn fx:id="colTbHigh" prefWidth="89.0" text="high" />
+            <TableColumn fx:id="colTbLow" minWidth="5.0" prefWidth="88.0" text="low" />
+            <TableColumn fx:id="colTbClose" prefWidth="96.0" text="close" />
+            <TableColumn fx:id="colTbVolume" prefWidth="178.0" text="volume" />
+         </columns>
       </TableView>
    </children>
 </AnchorPane>
