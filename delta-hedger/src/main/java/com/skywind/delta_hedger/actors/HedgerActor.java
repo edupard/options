@@ -1,13 +1,11 @@
 package com.skywind.delta_hedger.actors;
 
-import akka.actor.AbstractActor;
-import akka.actor.OneForOneStrategy;
-import akka.actor.SupervisorStrategy;
+import akka.actor.*;
 import com.ib.client.*;
 import com.skywind.delta_hedger.ui.MainController;
 import com.skywind.ib.IbGateway;
+import com.skywind.trading.spring_akka_integration.EmailActor;
 import com.skywind.trading.spring_akka_integration.MessageSentToExactActorInstance;
-import javafx.geometry.Pos;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.beans.factory.config.BeanDefinition;
@@ -17,6 +15,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import scala.concurrent.duration.Duration;
 
+import javax.annotation.PostConstruct;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
 
@@ -52,6 +51,12 @@ public class HedgerActor extends AbstractActor {
 
     @Autowired
     private MainController controller;
+
+    @Autowired
+    private ActorSystem actorSystem;
+
+
+    private ActorSelection emailActorSelection;
 
 
     public HedgerActor() {
@@ -171,10 +176,97 @@ public class HedgerActor extends AbstractActor {
                         onHistDataEndMsg(m);
                     }
                 })
+                .match(IbGateway.ErrorWithCode.class, m -> {
+                    if (m.isActorInstaceEquals(actorId)) {
+                        onErrorWithCode(m);
+                    }
+                })
+                .match(IbGateway.ErrorWithException.class, m -> {
+                    if (m.isActorInstaceEquals(actorId)) {
+                        onErrorWithException(m);
+                    }
+                })
+                .match(IbGateway.ErrorWithMessage.class, m -> {
+                    if (m.isActorInstaceEquals(actorId)) {
+                        onErrorWithMessage(m);
+                    }
+                })
                 .matchAny(m -> recievedUnknown(m))
                 .build();
     }
 
+    // should not be called at all
+    private void onErrorWithMessage(IbGateway.ErrorWithMessage m) {
+//        throw new RuntimeException(m.getErrorMsg());
+    }
+
+    // Handles errors generated within the API itself. If an exception is thrown within the API code it will be notified here. Possible cases include errors while reading the information from the socket or even mishandling at EWrapper's implementing class.
+    private void onErrorWithException(IbGateway.ErrorWithException m) {
+        throw new RuntimeException(m.getReason());
+    }
+
+
+    public final static Set<Integer> DISCONNECTED_FROM_IB_ERROR_CODES = new HashSet<>();
+    public final static Set<Integer> RECONNECTED_TO_IB_ERROR_CODES = new HashSet<>();
+    public final static Set<Integer> FATAL_ERROR_CODES = new HashSet<>();
+
+    static {
+        DISCONNECTED_FROM_IB_ERROR_CODES.add(1100);
+        DISCONNECTED_FROM_IB_ERROR_CODES.add(2110);
+
+        RECONNECTED_TO_IB_ERROR_CODES.add(1101);
+        RECONNECTED_TO_IB_ERROR_CODES.add(1102);
+
+        FATAL_ERROR_CODES.add(1300);
+        FATAL_ERROR_CODES.add(501);
+        FATAL_ERROR_CODES.add(502);
+        FATAL_ERROR_CODES.add(503);
+        FATAL_ERROR_CODES.add(504);
+    }
+
+
+    private boolean ibConnection = false;
+    private boolean apiConnection = false;
+
+    @PostConstruct
+    public void postConstruct() {
+        controller.onApiConnection(apiConnection);
+        controller.onIbConnection(ibConnection);
+    }
+
+    private void onErrorWithCode(IbGateway.ErrorWithCode m) {
+        if (DISCONNECTED_FROM_IB_ERROR_CODES.contains(m.getErrorCode()))
+        {
+            if (ibConnection) {
+                ibConnection = false;
+                controller.onIbConnection(ibConnection);
+                String message = "Options: disconnected from IB";
+                emailActorSelection.tell(new EmailActor.Email(message, message), self());
+            }
+
+        }
+        if (RECONNECTED_TO_IB_ERROR_CODES.contains(m.getErrorCode())) {
+            if (!ibConnection) {
+                ibConnection = true;
+                controller.onIbConnection(ibConnection);
+                String message = "Options: reconnected to IB";
+                emailActorSelection.tell(new EmailActor.Email(message, message), self());
+
+                requestExecutions();
+                refreshTimebars(true);
+            }
+        }
+
+        if (FATAL_ERROR_CODES.contains(m.getErrorCode())) {
+            String message = String.format("%d %s", m.getErrorCode(), m.getErrorMsg());
+            emailActorSelection.tell(new EmailActor.Email("Options: fatal error", message), self());
+            throw new FatalException();
+        }
+
+        if (m.getErrorCode() == 2106) {
+            refreshTimebars(true);
+        }
+    }
 
     private final SupervisorStrategy strategy = new OneForOneStrategy(-1, Duration.Inf(), (Throwable t) -> SupervisorStrategy.escalate());
 
@@ -184,6 +276,13 @@ public class HedgerActor extends AbstractActor {
     }
 
     public static final long RESTART_INTERVAL_SEC = 5l;
+
+    @Override
+    public void preStart() throws Exception {
+        super.preStart();
+
+        emailActorSelection = actorSystem.actorSelection("/user/email");
+    }
 
     @Override
     public void postRestart(Throwable thrwbl) throws Exception {
@@ -248,6 +347,10 @@ public class HedgerActor extends AbstractActor {
     }
 
     private void onConnected(IbGateway.ConnectAck m) {
+        ibConnection = true;
+        controller.onIbConnection(ibConnection);
+        apiConnection = true;
+        controller.onApiConnection(apiConnection);
     }
 
     private Set<String> processedTrades = new HashSet<>();

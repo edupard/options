@@ -53,6 +53,10 @@ public class AppActor extends AbstractActor {
             new Function<Throwable, Directive>() {
                 @Override
                 public Directive apply(Throwable t) {
+                    LOGGER.error("", t);
+                    if (t instanceof FatalException) {
+                        return SupervisorStrategy.stop();
+                    }
                     return SupervisorStrategy.restart();
                 }
             });

@@ -4,6 +4,7 @@ version '1.0.0'
 dependencies {
     compile group: 'org.springframework', name: 'spring-context'
     compile group: 'org.springframework', name: 'spring-beans'
+    compile group: 'org.springframework.boot', name: 'spring-boot-starter-mail'
     compile group: 'org.slf4j', name: 'slf4j-api'
     compile group: 'com.typesafe.akka', name: "$akkaLibName", version: "$akkaVersion"
     compile group: 'com.typesafe.akka', name: "$akkaSlf4JLibName", version: "$akkaVersion"

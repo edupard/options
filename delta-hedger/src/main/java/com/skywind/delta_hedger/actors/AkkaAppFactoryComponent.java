@@ -2,6 +2,7 @@ package com.skywind.delta_hedger.actors;
 
 import akka.actor.ActorRef;
 import akka.actor.ActorSystem;
+import com.skywind.trading.spring_akka_integration.EmailActor;
 import com.skywind.trading.spring_akka_integration.IAkkaAppFactory;
 import com.skywind.trading.spring_akka_integration.SpringExtension;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -17,9 +18,12 @@ public class AkkaAppFactoryComponent implements IAkkaAppFactory {
     private SpringExtension springExtension;
 
     private ActorRef appActor;
+    private ActorRef emailActor;
 
     @Override
     public void createActors() {
+        emailActor = actorSystem.actorOf(springExtension.props(EmailActor.BEAN_NAME), "email");
+
         appActor = actorSystem.actorOf(springExtension.props(AppActor.BEAN_NAME), "app");
         appActor.tell(new AppActor.StartApplication(), ActorRef.noSender());
     }

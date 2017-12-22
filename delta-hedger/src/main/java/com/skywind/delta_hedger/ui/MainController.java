@@ -14,12 +14,14 @@ import javafx.collections.transformation.SortedList;
 import javafx.fxml.FXML;
 import javafx.scene.Parent;
 import javafx.scene.control.Alert;
+import javafx.scene.control.Label;
 import javafx.scene.control.TableColumn;
 import javafx.scene.control.TableView;
 import javafx.scene.control.cell.CheckBoxTableCell;
 import javafx.scene.control.cell.TextFieldTableCell;
 import javafx.scene.layout.AnchorPane;
 import javafx.beans.value.ChangeListener;
+import javafx.scene.paint.Color;
 import javafx.util.StringConverter;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.ApplicationContext;
@@ -39,6 +41,11 @@ public class MainController {
 
     @FXML
     private AnchorPane anchor;
+
+    @FXML
+    private Label lblApiConnection;
+    @FXML
+    private Label lblIbConnection;
 
     @FXML
     private TableView<PositionEntry> tblPositions;
@@ -139,6 +146,17 @@ public class MainController {
         }
     }
 
+    public void onApiConnection(boolean apiConnection) {
+        Platform.runLater(()->{
+            lblApiConnection.setTextFill(apiConnection ? Color.GREEN : Color.RED);
+        });
+    }
+
+    public void onIbConnection(boolean ibConnection) {
+        Platform.runLater(()->{
+            lblIbConnection.setTextFill(ibConnection ? Color.GREEN : Color.RED);
+        });
+    }
 
     public static final class UpdateUiPositionsBatch {
 
