@@ -23,13 +23,15 @@ public class Position {
     private double posPx;
     private double vol;
     private double ir;
+    private Trade lastTrade;
 
-    public Position(Contract contract, double pos, double posPx, double vol, double ir) {
+    public Position(Contract contract, double pos, double posPx, double vol, double ir, Trade lastTrade) {
         this.contract = contract;
         this.pos = pos;
         this.posPx = posPx;
         this.vol = vol;
         this.ir = ir;
+        this.lastTrade = lastTrade;
     }
 
     public Position(Position other) {
@@ -40,6 +42,7 @@ public class Position {
         this.ir = other.ir;
         this.contractDetails = other.contractDetails;
         this.expiry = other.expiry;
+        this.lastTrade = other.lastTrade;
     }
 
     public Contract getContract() {
@@ -147,5 +150,13 @@ public class Position {
 
     public void setVol(double vol) {
         this.vol = vol;
+    }
+
+    public void setLastTrade(Trade lastTrade) {
+        this.lastTrade = lastTrade;
+    }
+
+    public Trade getLastTrade() {
+        return lastTrade;
     }
 }

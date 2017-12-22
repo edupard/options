@@ -16,6 +16,7 @@ import org.slf4j.LoggerFactory;
 import scala.concurrent.duration.Duration;
 
 import javax.annotation.PostConstruct;
+import java.time.Instant;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
 
@@ -266,6 +267,13 @@ public class HedgerActor extends AbstractActor {
         if (m.getErrorCode() == 2106) {
             refreshTimebars(true);
         }
+        if (m.getErrorCode() == 507) {
+            String message = "Options: ib socket closed";
+            emailActorSelection.tell(new EmailActor.Email(message, message), self());
+            controller.onApiConnection(false);
+            controller.onIbConnection(false);
+            throw new RuntimeException("Ib socket closed");
+        }
     }
 
     private final SupervisorStrategy strategy = new OneForOneStrategy(-1, Duration.Inf(), (Throwable t) -> SupervisorStrategy.escalate());
@@ -312,6 +320,10 @@ public class HedgerActor extends AbstractActor {
             uiUpdates.addAction(MainController.UpdateUiPositionsBatch.Action.UPDATE, e.getKey(), e.getValue());
         }
         for (Trade t : StorageUtils.readTrades()) {
+            if (positions.containsKey(t.getLocalSymbol())) {
+                Position p = positions.get(t.getLocalSymbol());
+                p.setLastTrade(t);
+            }
             processedTrades.add(t.getExecId());
         }
         controller.onPositionsUpdate(uiUpdates);
@@ -362,15 +374,23 @@ public class HedgerActor extends AbstractActor {
             MainController.UpdateUiPositionsBatch uiUpdates = new MainController.UpdateUiPositionsBatch(false);
             String localSymbol = m.getContract().localSymbol();
             Position p = null;
+            Trade trade = new Trade(m.getContract(),
+                    Utils.getPosition(m),
+                    m.getExecution().price(),
+                    m.getExecution().execId(),
+                    m.getExecution().time()
+            );
             if (positions.containsKey(localSymbol)) {
                 p = positions.get(localSymbol);
                 p.updatePosition(m);
+                p.setLastTrade(trade);
             } else {
                 Contract c = m.getContract();
                 double pos = Utils.getPosition(m);
                 double posPx = m.getExecution().price();
-                p = new Position(c, pos, posPx, 0.0d, 0.0d);
+                p = new Position(c, pos, posPx, 0.0d, 0.0d, trade);
             }
+
             if (p.isZero()) {
                 uiUpdates.addAction(MainController.UpdateUiPositionsBatch.Action.DELETE, localSymbol, p);
                 positions.remove(localSymbol);
@@ -394,8 +414,9 @@ public class HedgerActor extends AbstractActor {
         private final double low;
         private final double close;
         private final double volume;
+        private final Instant lut;
 
-        public Timebar(String localSymbol, String duration, String barTime, double open, double high, double low, double close, double volume) {
+        public Timebar(String localSymbol, String duration, String barTime, double open, double high, double low, double close, double volume, Instant lut) {
             this.localSymbol = localSymbol;
             this.duration = duration;
             this.barTime = barTime;
@@ -404,6 +425,7 @@ public class HedgerActor extends AbstractActor {
             this.low = low;
             this.close = close;
             this.volume = volume;
+            this.lut = lut;
         }
 
         public String getLocalSymbol() {
@@ -436,6 +458,10 @@ public class HedgerActor extends AbstractActor {
 
         public String getDuration() {
             return duration;
+        }
+
+        public Instant getLut() {
+            return lut;
         }
 
         @Override
@@ -507,27 +533,33 @@ public class HedgerActor extends AbstractActor {
     }
 
     private void onTimeBar(int reqId, Bar bar) {
-        TimeBarRequest r = timeBarsRequestMap.get(reqId);
-        if (r == null) {
-            return;
+        if (timeBarsRequestMap.containsKey(reqId)) {
+            TimeBarRequest r = timeBarsRequestMap.get(reqId);
+            if (r == null) {
+                return;
+            }
+            Timebar tb = new Timebar(
+                    r.localSymbol,
+                    r.duration,
+                    bar.time(),
+                    bar.open(),
+                    bar.high(),
+                    bar.low(),
+                    bar.close(),
+                    bar.volume(),
+                    Instant.now()
+            );
+            TimebarArray arr = currentBars.get(r);
+            if (arr == null) {
+                arr = new TimebarArray();
+                currentBars.put(r, arr);
+            }
+            arr.onTimeBar(tb);
+            controller.onTimeBar(tb);
         }
-        Timebar tb = new Timebar(
-                r.localSymbol,
-                r.duration,
-                bar.time(),
-                bar.open(),
-                bar.high(),
-                bar.low(),
-                bar.close(),
-                bar.volume()
-        );
-        TimebarArray arr = currentBars.get(r);
-        if (arr == null) {
-            arr = new TimebarArray();
-            currentBars.put(r, arr);
+        else {
+            ibGateway.getClientSocket().cancelHistoricalData(reqId);
         }
-        arr.onTimeBar(tb);
-        controller.onTimeBar(tb);
     }
 
     private void onHistDataMsg(IbGateway.HistDataMsg m) {
@@ -560,18 +592,6 @@ public class HedgerActor extends AbstractActor {
                 }
             }
         }
-        //unsubscribe for invalid requests
-        Set<TimeBarRequest> requestsToTerminate = new HashSet<>();
-        requestsToTerminate.addAll(timeBarsRequestMap.values());
-        requestsToTerminate.removeAll(requests);
-
-        for (Map.Entry<Integer, TimeBarRequest> e : timeBarsRequestMap.entrySet()) {
-            if (requestsToTerminate.contains(e.getValue())) {
-                ibGateway.getClientSocket().cancelHistoricalData(e.getKey());
-            }
-        }
-        controller.onRemoveTimeBars(requestsToTerminate);
-
 
         //Request only new codes
         requests.removeAll(timeBarsRequestMap.values());
@@ -647,11 +667,14 @@ public class HedgerActor extends AbstractActor {
                 if (!positions.containsKey(localSymbol)) {
                     double vol = 0.0d;
                     double ir = 0.0d;
+                    Trade lastTrade = null;
                     if (oldPositions.containsKey(localSymbol)) {
-                        vol = oldPositions.get(localSymbol).getVol();
-                        ir = oldPositions.get(localSymbol).getIr();
+                        Position oldPosition = oldPositions.get(localSymbol);
+                        vol = oldPosition.getVol();
+                        ir = oldPosition.getIr();
+                        lastTrade = oldPosition.getLastTrade();
                     }
-                    Position p = new Position(c, pm.getPosition(), pm.getPositionPrice(), vol, ir);
+                    Position p = new Position(c, pm.getPosition(), pm.getPositionPrice(), vol, ir, lastTrade);
                     positions.put(localSymbol, p);
                     uiUpdates.addAction(MainController.UpdateUiPositionsBatch.Action.UPDATE, localSymbol, p);
                 }

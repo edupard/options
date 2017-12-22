@@ -9,6 +9,10 @@ import javafx.beans.property.SimpleStringProperty;
 import javafx.beans.property.StringProperty;
 import javafx.beans.value.ObservableValue;
 
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeFormatterBuilder;
+
 public class TimeBarEntry {
     private final StringProperty localSymbol;
     private final StringProperty duration;
@@ -18,6 +22,7 @@ public class TimeBarEntry {
     private final DoubleProperty low;
     private final DoubleProperty close;
     private final DoubleProperty volume;
+    private final StringProperty lut;
 
     public TimeBarEntry() {
         this.localSymbol = new SimpleStringProperty();
@@ -28,7 +33,13 @@ public class TimeBarEntry {
         this.low = new SimpleDoubleProperty();
         this.close = new SimpleDoubleProperty();
         this.volume = new SimpleDoubleProperty();
+        this.lut = new SimpleStringProperty();
     }
+
+    private static final DateTimeFormatter FMT = new DateTimeFormatterBuilder()
+            .appendPattern("HH:mm:ss")
+            .toFormatter()
+            .withZone(ZoneId.systemDefault());
 
     public void updateUi(HedgerActor.Timebar tb) {
         localSymbol.set(tb.getLocalSymbol());
@@ -39,6 +50,8 @@ public class TimeBarEntry {
         low.set(tb.getLow());
         close.set(tb.getClose());
         volume.set(tb.getVolume());
+        lut.set(FMT.format(tb.getLut()));
+
     }
 
     public StringProperty localSymbolProperty() {
@@ -72,4 +85,6 @@ public class TimeBarEntry {
     public DoubleProperty volumeProperty() {
         return volume;
     }
+
+    public StringProperty lutProperty() { return lut; }
 }

@@ -25,6 +25,9 @@ public class PositionEntry {
     private final DoubleProperty ir;
     private final DoubleProperty vol;
 
+    private final StringProperty lastPos;
+    private final StringProperty lastTime;
+
     public PositionEntry() {
         this.selected = new SimpleBooleanProperty(true);
         this.localSymbol = new SimpleStringProperty();
@@ -36,6 +39,8 @@ public class PositionEntry {
         this.pos = new SimpleDoubleProperty();
         this.ir = new SimpleDoubleProperty();
         this.vol = new SimpleDoubleProperty();
+        this.lastPos = new SimpleStringProperty();
+        this.lastTime = new SimpleStringProperty();
     }
 
     private static final DateTimeFormatter FMT = new DateTimeFormatterBuilder()
@@ -70,17 +75,26 @@ public class PositionEntry {
         pos.set(p.getPos());
         ir.set(p.getIr());
         vol.set(p.getVol());
+
+        if (p.getLastTrade() != null) {
+            lastPos.set(String.format("%.0f", p.getLastTrade().getPos()));
+            lastTime.set(p.getLastTrade().getTime());
+        }
+        else{
+            lastPos.set("");
+            lastTime.set("");
+        }
     }
 
-    public ObservableValue<Boolean> selectedProperty() {
+    public BooleanProperty selectedProperty() {
         return selected;
     }
 
-    public ObservableValue<String> localSymbolProperty() {
+    public StringProperty localSymbolProperty() {
         return localSymbol;
     }
 
-    public ObservableValue<String> expiryProperty() {
+    public StringProperty expiryProperty() {
         return expiry;
     }
 
@@ -92,7 +106,7 @@ public class PositionEntry {
         return strike;
     }
 
-    public ObservableValue<String> secTypeProperty() {
+    public StringProperty secTypeProperty() {
         return secType;
     }
 
@@ -108,7 +122,15 @@ public class PositionEntry {
         return vol;
     }
 
-    public ObservableValue<String> underLocalSymbolProperty() {
+    public StringProperty underLocalSymbolProperty() {
         return underLocalSymbol;
+    }
+
+    public StringProperty lastPosProperty() {
+        return lastPos;
+    }
+
+    public StringProperty lastTimeProperty() {
+        return lastTime;
     }
 }

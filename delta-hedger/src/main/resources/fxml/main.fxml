@@ -17,13 +17,15 @@
             <TableColumn fx:id="colSelected" prefWidth="60.0" text="selected" />
           <TableColumn fx:id="colCode" prefWidth="136.0" text="code" />
           <TableColumn fx:id="colUnderCode" minWidth="2.0" prefWidth="83.0" text="underlying" />
-            <TableColumn fx:id="colExpiry" prefWidth="89.0" text="expiry" />
-            <TableColumn fx:id="colDays" prefWidth="52.0" text="days" />
+            <TableColumn fx:id="colExpiry" prefWidth="106.0" text="expiry" />
+            <TableColumn fx:id="colDays" prefWidth="35.0" text="days" />
             <TableColumn fx:id="colStrike" prefWidth="84.0" text="strike" />
             <TableColumn fx:id="colSecType" prefWidth="47.0" text="c / p" />
             <TableColumn fx:id="colPos" prefWidth="79.0" text="pos" />
             <TableColumn fx:id="colIr" prefWidth="61.0" text="ir" />
             <TableColumn fx:id="colVol" prefWidth="59.0" text="vol" />
+            <TableColumn fx:id="colLastPos" prefWidth="59.0" text="last pos" />
+            <TableColumn fx:id="colLastTime" prefWidth="159.0" text="at" />
         </columns>
       </TableView>
       <Button layoutX="57.0" layoutY="531.0" mnemonicParsing="false" onAction="#onRefreshTimebars" text="Refresh timebars" />
@@ -36,7 +38,8 @@
             <TableColumn fx:id="colTbHigh" prefWidth="89.0" text="high" />
             <TableColumn fx:id="colTbLow" minWidth="5.0" prefWidth="88.0" text="low" />
             <TableColumn fx:id="colTbClose" prefWidth="96.0" text="close" />
-            <TableColumn fx:id="colTbVolume" prefWidth="178.0" text="volume" />
+            <TableColumn fx:id="colTbVolume" prefWidth="120.0" text="volume" />
+            <TableColumn fx:id="colTbLut" prefWidth="151.0" text="lut" />
          </columns>
       </TableView>
       <Label fx:id="lblApiConnection" layoutX="65.0" layoutY="23.0" text="api">

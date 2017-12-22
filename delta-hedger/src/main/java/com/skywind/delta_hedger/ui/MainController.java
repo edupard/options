@@ -69,6 +69,10 @@ public class MainController {
     private TableColumn<PositionEntry, Double> colIr;
     @FXML
     private TableColumn<PositionEntry, Double> colVol;
+    @FXML
+    private TableColumn<PositionEntry, String> colLastPos;
+    @FXML
+    private TableColumn<PositionEntry, String> colLastTime;
 
     private Map<String, PositionEntry> positionsDataMap = new HashMap<>();
     private final ObservableList<PositionEntry> positionsData = FXCollections.observableArrayList();
@@ -95,6 +99,8 @@ public class MainController {
     private TableColumn<TimeBarEntry, Double> colTbClose;
     @FXML
     private TableColumn<TimeBarEntry, Double> colTbVolume;
+    @FXML
+    private TableColumn<TimeBarEntry, String> colTbLut;
 
     private Map<HedgerActor.Timebar, TimeBarEntry> timeBarsDataMap = new HashMap<>();
     private final ObservableList<TimeBarEntry> timeBarData = FXCollections.observableArrayList();
@@ -129,21 +135,6 @@ public class MainController {
             timeBarsDataMap.clear();
             timeBarData.clear();
         });
-    }
-
-    public void onRemoveTimeBars(Set<HedgerActor.TimeBarRequest> requestsToTerminate) {
-        for (HedgerActor.TimeBarRequest r : requestsToTerminate) {
-            List<HedgerActor.Timebar> toRemove = new LinkedList<>();
-            for (Map.Entry<HedgerActor.Timebar, TimeBarEntry> e : timeBarsDataMap.entrySet()) {
-                if (e.getKey().getLocalSymbol().equals(r.getLocalSymbol()) &&
-                 e.getKey().getDuration().equals(r.getDuration())) {
-                    timeBarData.remove(e.getValue());
-                }
-            }
-            for (HedgerActor.Timebar tb : toRemove) {
-                timeBarsDataMap.remove(tb);
-            }
-        }
     }
 
     public void onApiConnection(boolean apiConnection) {
@@ -278,6 +269,10 @@ public class MainController {
         });
         colVol.setCellFactory(TextFieldTableCell.forTableColumn(new CustomDoubleStringConverter()));
 
+        colLastPos.setCellValueFactory(cellData -> cellData.getValue().lastPosProperty());
+        colLastTime.setCellValueFactory(cellData -> cellData.getValue().lastTimeProperty());
+
+
         sortedPositionsData.comparatorProperty().bind(tblPositions.comparatorProperty());
         tblPositions.setItems(sortedPositionsData);
 
@@ -300,6 +295,8 @@ public class MainController {
 
         colTbVolume.setCellValueFactory(cellData -> cellData.getValue().volumeProperty().asObject());
         colTbVolume.setCellFactory(new FormatedCellFactory<>("%.0f"));
+
+        colTbLut.setCellValueFactory(cellData -> cellData.getValue().lutProperty());
 
 
         sortedTimeBarData.comparatorProperty().bind(tblTimeBars.comparatorProperty());

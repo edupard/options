@@ -137,7 +137,7 @@ public class StorageUtils {
                     double ir = Double.parseDouble(r.get(COLUMN_IR));
                     double vol = Double.parseDouble(r.get(COLUMN_VOL));
 
-                    Position p = new Position(c, pos, posPx, vol, ir);
+                    Position p = new Position(c, pos, posPx, vol, ir, null);
                     positions.put(c.localSymbol(), p);
                 }
             } catch (FileNotFoundException e) {

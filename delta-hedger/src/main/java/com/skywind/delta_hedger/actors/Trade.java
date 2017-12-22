@@ -20,4 +20,16 @@ public class Trade {
     public String getExecId() {
         return execId;
     }
+
+    public String getLocalSymbol() {
+        return contract.localSymbol();
+    }
+
+    public double getPos() {
+        return pos;
+    }
+
+    public String getTime() {
+        return time;
+    }
 }
