@@ -4,6 +4,7 @@ import akka.actor.*;
 import com.ib.client.*;
 import com.skywind.delta_hedger.ui.MainController;
 import com.skywind.ib.IbGateway;
+import com.skywind.ib.Utils;
 import com.skywind.trading.spring_akka_integration.EmailActor;
 import com.skywind.trading.spring_akka_integration.MessageSentToExactActorInstance;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -241,7 +242,7 @@ public class HedgerActor extends AbstractActor {
             if (ibConnection) {
                 ibConnection = false;
                 controller.onIbConnection(ibConnection);
-                String message = "Options: disconnected from IB";
+                String message = "Log trader: disconnected from IB";
                 emailActorSelection.tell(new EmailActor.Email(message, message), self());
             }
 
@@ -250,7 +251,7 @@ public class HedgerActor extends AbstractActor {
             if (!ibConnection) {
                 ibConnection = true;
                 controller.onIbConnection(ibConnection);
-                String message = "Options: reconnected to IB";
+                String message = "Log trader: reconnected to IB";
                 emailActorSelection.tell(new EmailActor.Email(message, message), self());
 
                 requestExecutions();
@@ -268,7 +269,7 @@ public class HedgerActor extends AbstractActor {
             refreshTimebars(true);
         }
         if (m.getErrorCode() == 507) {
-            String message = "Options: ib socket closed";
+            String message = "Log trader: ib socket closed";
             emailActorSelection.tell(new EmailActor.Email(message, message), self());
             controller.onApiConnection(false);
             controller.onIbConnection(false);

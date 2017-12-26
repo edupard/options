@@ -24,6 +24,7 @@ import javafx.beans.value.ChangeListener;
 import javafx.scene.paint.Color;
 import javafx.util.StringConverter;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.ConfigurableApplicationContext;
 
@@ -37,7 +38,7 @@ public class MainController {
     @Autowired
     private ActorSystem actorSystem;
 
-    private ActorSelection hedgerActor;
+    private ActorSelection logTraderActor;
 
     @FXML
     private AnchorPane anchor;
@@ -90,17 +91,20 @@ public class MainController {
     @FXML
     private TableColumn<TimeBarEntry, String> colTbBarTime;
     @FXML
-    private TableColumn<TimeBarEntry, Double> colTbOpen;
+    private TableColumn<TimeBarEntry, String> colTbOpen;
     @FXML
-    private TableColumn<TimeBarEntry, Double> colTbHigh;
+    private TableColumn<TimeBarEntry, String> colTbHigh;
     @FXML
-    private TableColumn<TimeBarEntry, Double> colTbLow;
+    private TableColumn<TimeBarEntry, String> colTbLow;
     @FXML
-    private TableColumn<TimeBarEntry, Double> colTbClose;
+    private TableColumn<TimeBarEntry, String> colTbClose;
     @FXML
     private TableColumn<TimeBarEntry, Double> colTbVolume;
     @FXML
     private TableColumn<TimeBarEntry, String> colTbLut;
+
+    @Value("${fut.price.coeff}")
+    private double futPriceCoeff;
 
     private Map<HedgerActor.Timebar, TimeBarEntry> timeBarsDataMap = new HashMap<>();
     private final ObservableList<TimeBarEntry> timeBarData = FXCollections.observableArrayList();
@@ -119,12 +123,12 @@ public class MainController {
     public void onTimeBar(HedgerActor.Timebar tb) {
         if (timeBarsDataMap.containsKey(tb)) {
             TimeBarEntry timeBarEntry = timeBarsDataMap.get(tb);
-            timeBarEntry.updateUi(tb);
+            timeBarEntry.updateUi(tb, futPriceCoeff);
             timeBarsDataMap.put(tb, timeBarEntry);
         }
         else {
             TimeBarEntry timeBarEntry = new TimeBarEntry();
-            timeBarEntry.updateUi(tb);
+            timeBarEntry.updateUi(tb, futPriceCoeff);
             timeBarData.add(timeBarEntry);
             timeBarsDataMap.put(tb, timeBarEntry);
         }
@@ -218,7 +222,7 @@ public class MainController {
 
     @PostConstruct
     public void init() {
-        hedgerActor = actorSystem.actorSelection("/user/app/hedger");
+        logTraderActor = actorSystem.actorSelection("/user/app/logTrader");
 
         colSelected.setCellFactory(
                 CheckBoxTableCell.forTableColumn(colSelected)
@@ -248,7 +252,7 @@ public class MainController {
             pe.irProperty().addListener(new ChangeListener() {
                 @Override
                 public void changed(ObservableValue observable, Object oldValue, Object newValue) {
-                    hedgerActor.tell(new HedgerActor.IrChanged(pe.localSymbolProperty().getValue(), (double) newValue), null);
+                    logTraderActor.tell(new HedgerActor.IrChanged(pe.localSymbolProperty().getValue(), (double) newValue), null);
                 }
             });
 
@@ -261,7 +265,7 @@ public class MainController {
             pe.volProperty().addListener(new ChangeListener() {
                 @Override
                 public void changed(ObservableValue observable, Object oldValue, Object newValue) {
-                    hedgerActor.tell(new HedgerActor.VolChanged(pe.localSymbolProperty().getValue(), (double) newValue), null);
+                    logTraderActor.tell(new HedgerActor.VolChanged(pe.localSymbolProperty().getValue(), (double) newValue), null);
                 }
             });
 
@@ -281,17 +285,21 @@ public class MainController {
         colTbDuration.setCellValueFactory(cellData -> cellData.getValue().durationProperty());
         colTbBarTime.setCellValueFactory(cellData -> cellData.getValue().barTimeProperty());
 
-        colTbOpen.setCellValueFactory(cellData -> cellData.getValue().openProperty().asObject());
-        colTbOpen.setCellFactory(new FormatedCellFactory<>("%.3f"));
+        colTbOpen.setCellValueFactory(cellData -> cellData.getValue().openProperty());
+//        colTbOpen.setCellValueFactory(cellData -> cellData.getValue().openProperty().asObject());
+//        colTbOpen.setCellFactory(new FormatedCellFactory<>("%.3f"));
 
-        colTbHigh.setCellValueFactory(cellData -> cellData.getValue().highProperty().asObject());
-        colTbHigh.setCellFactory(new FormatedCellFactory<>("%.3f"));
+        colTbHigh.setCellValueFactory(cellData -> cellData.getValue().highProperty());
+//        colTbHigh.setCellValueFactory(cellData -> cellData.getValue().highProperty().asObject());
+//        colTbHigh.setCellFactory(new FormatedCellFactory<>("%.3f"));
 
-        colTbLow.setCellValueFactory(cellData -> cellData.getValue().lowProperty().asObject());
-        colTbLow.setCellFactory(new FormatedCellFactory<>("%.3f"));
+        colTbLow.setCellValueFactory(cellData -> cellData.getValue().lowProperty());
+//        colTbLow.setCellValueFactory(cellData -> cellData.getValue().lowProperty().asObject());
+//        colTbLow.setCellFactory(new FormatedCellFactory<>("%.3f"));
 
-        colTbClose.setCellValueFactory(cellData -> cellData.getValue().closeProperty().asObject());
-        colTbClose.setCellFactory(new FormatedCellFactory<>("%.3f"));
+        colTbClose.setCellValueFactory(cellData -> cellData.getValue().closeProperty());
+//        colTbClose.setCellValueFactory(cellData -> cellData.getValue().closeProperty().asObject());
+//        colTbClose.setCellFactory(new FormatedCellFactory<>("%.3f"));
 
         colTbVolume.setCellValueFactory(cellData -> cellData.getValue().volumeProperty().asObject());
         colTbVolume.setCellFactory(new FormatedCellFactory<>("%.0f"));
@@ -346,11 +354,11 @@ public class MainController {
 
     @FXML
     public void onReloadPositions() {
-        hedgerActor.tell(new HedgerActor.ReloadPositions(), null);
+        logTraderActor.tell(new HedgerActor.ReloadPositions(), null);
     }
 
     @FXML
     public void onRefreshTimebars() {
-        hedgerActor.tell(new HedgerActor.RefreshTimebars(), null);
+        logTraderActor.tell(new HedgerActor.RefreshTimebars(), null);
     }
 }

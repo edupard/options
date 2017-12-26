@@ -2,13 +2,11 @@ package com.skywind.delta_hedger.ui;
 
 import com.ib.client.ContractDetails;
 import com.skywind.delta_hedger.actors.Position;
-import com.skywind.delta_hedger.actors.Utils;
+import com.skywind.ib.Utils;
 import javafx.beans.property.*;
-import javafx.beans.value.ObservableValue;
 
 import java.time.Duration;
 import java.time.Instant;
-import java.time.LocalTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeFormatterBuilder;

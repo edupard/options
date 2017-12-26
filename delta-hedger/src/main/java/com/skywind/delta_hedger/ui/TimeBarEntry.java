@@ -17,10 +17,10 @@ public class TimeBarEntry {
     private final StringProperty localSymbol;
     private final StringProperty duration;
     private final StringProperty barTime;
-    private final DoubleProperty open;
-    private final DoubleProperty high;
-    private final DoubleProperty low;
-    private final DoubleProperty close;
+    private final StringProperty open;
+    private final StringProperty high;
+    private final StringProperty low;
+    private final StringProperty close;
     private final DoubleProperty volume;
     private final StringProperty lut;
 
@@ -28,10 +28,10 @@ public class TimeBarEntry {
         this.localSymbol = new SimpleStringProperty();
         this.duration = new SimpleStringProperty();
         this.barTime = new SimpleStringProperty();
-        this.open = new SimpleDoubleProperty();
-        this.high = new SimpleDoubleProperty();
-        this.low = new SimpleDoubleProperty();
-        this.close = new SimpleDoubleProperty();
+        this.open = new SimpleStringProperty();
+        this.high = new SimpleStringProperty();
+        this.low = new SimpleStringProperty();
+        this.close = new SimpleStringProperty();
         this.volume = new SimpleDoubleProperty();
         this.lut = new SimpleStringProperty();
     }
@@ -41,14 +41,34 @@ public class TimeBarEntry {
             .toFormatter()
             .withZone(ZoneId.systemDefault());
 
-    public void updateUi(HedgerActor.Timebar tb) {
+    private static String convertPrice(double px, double futPriceCoeff) {
+        double pxWhole = Math.floor(px);
+        double pxPart = px - pxWhole;
+        double pxPartConverted = Math.round(pxPart * futPriceCoeff);
+        return String.format("%.0f'%.0f", pxWhole, pxPartConverted);
+    }
+
+    public void updateUi(HedgerActor.Timebar tb, double futPriceCoeff) {
         localSymbol.set(tb.getLocalSymbol());
         duration.set(tb.getDuration());
         barTime.set(tb.getBarTime());
-        open.set(tb.getOpen());
-        high.set(tb.getHigh());
-        low.set(tb.getLow());
-        close.set(tb.getClose());
+
+        double tbOpen = tb.getOpen();
+        double openWhole = Math.floor(tbOpen);
+        double openPart = tbOpen - openWhole;
+        double openPartConverted = Math.round(openPart * futPriceCoeff);
+        double openConverted = openWhole + openPartConverted / 1000;
+
+        open.set(convertPrice(tb.getOpen(), futPriceCoeff));
+        high.set(convertPrice(tb.getHigh(), futPriceCoeff));
+        low.set(convertPrice(tb.getLow(), futPriceCoeff));
+        close.set(convertPrice(tb.getClose(), futPriceCoeff));
+
+//        open.set(tb.getOpen());
+//        high.set(tb.getHigh());
+//        low.set(tb.getLow());
+//        close.set(tb.getClose());
+
         volume.set(tb.getVolume());
         lut.set(FMT.format(tb.getLut()));
 
@@ -66,19 +86,19 @@ public class TimeBarEntry {
         return barTime;
     }
 
-    public DoubleProperty openProperty() {
+    public StringProperty openProperty() {
         return open;
     }
 
-    public DoubleProperty highProperty() {
+    public StringProperty highProperty() {
         return high;
     }
 
-    public DoubleProperty lowProperty() {
+    public StringProperty lowProperty() {
         return low;
     }
 
-    public DoubleProperty closeProperty() {
+    public StringProperty closeProperty() {
         return close;
     }
 

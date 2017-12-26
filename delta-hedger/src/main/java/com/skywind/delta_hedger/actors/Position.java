@@ -2,8 +2,8 @@ package com.skywind.delta_hedger.actors;
 
 import com.ib.client.Contract;
 import com.ib.client.ContractDetails;
-import com.ib.client.Util;
 import com.skywind.ib.IbGateway;
+import com.skywind.ib.Utils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

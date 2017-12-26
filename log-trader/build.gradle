@@ -1,0 +1,24 @@
+group 'com.skywind.trading'
+version '1.0.0'
+
+dependencies {
+    compile group: 'org.apache.commons', name: 'commons-csv', version: "$commonsCsvVersion"
+    compile group: 'org.springframework.boot', name: 'spring-boot-starter'
+    compile group: 'org.springframework.integration', name: 'spring-integration-core'
+    compile group: 'org.springframework.integration', name: 'spring-integration-file'
+    compile group: 'org.springframework.integration', name: 'spring-integration-java-dsl'
+    compile project(':ib')
+    compile project(':spring-akka-integration')
+    compile project(':spring-javafx-integration')
+    testCompile group: 'junit', name: 'junit'
+}
+
+
+apply plugin: 'org.springframework.boot'
+
+bootRepackage {
+    mainClass = 'com.skywind.log_trader.Application'
+}
+
+sourceCompatibility = 1.8
+targetCompatibility = 1.8

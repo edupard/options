@@ -1,4 +1,4 @@
-package com.skywind.delta_hedger.actors;
+package com.skywind.ib;
 
 import com.ib.client.Contract;
 import com.ib.client.Types;
