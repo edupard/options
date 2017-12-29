@@ -1,8 +1,8 @@
 package com.skywind.log_trader.actors;
 
 import akka.actor.AbstractActor;
+import akka.actor.ActorSelection;
 import akka.actor.ActorSystem;
-import akka.japi.pf.ReceiveBuilder;
 
 import static com.skywind.log_trader.actors.FileActor.BEAN_NAME;
 
@@ -10,17 +10,18 @@ import java.io.IOException;
 import java.nio.charset.Charset;
 import java.nio.file.Files;
 import java.nio.file.Paths;
-import java.time.Duration;
-import java.time.Instant;
 import java.util.UUID;
 import java.util.stream.Stream;
 
 import com.skywind.log_trader.ui.MainController;
+import com.skywind.trading.spring_akka_integration.MessageSentToExactActorInstance;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.beans.factory.config.BeanDefinition;
 import org.springframework.context.annotation.Scope;
 import org.springframework.stereotype.Component;
+
+import javax.annotation.PostConstruct;
 
 /**
  * @author Admin
@@ -37,16 +38,39 @@ public class FileActor extends AbstractActor {
     @Value("${filePath}")
     private String filePath;
 
-    private boolean fileLoaded = false;
-
     @Autowired
     private MainController controller;
 
-    private int linesProcessed = 0;
+    @Value("${long.size}")
+    private double longSize;
+
+    @Value("${short.size}")
+    private double shortSize;
+
+    private UUID logTraderActorId = null;
+
+    private ActorSelection logTraderActorSelection;
+
+    private boolean newLine = false;
+
+    @PostConstruct
+    public void postConstruct() throws IOException {
+        String tmpFilePath = String.format("data/%s.tmp", UUID.randomUUID().toString());
+
+        Files.copy(Paths.get(filePath), Paths.get(tmpFilePath));
+
+        try (Stream<String> lines = Files.lines(Paths.get(tmpFilePath), Charset.defaultCharset())) {
+            lines.forEachOrdered(line -> {
+                onNewLine(line);
+            });
+        }
+        Files.delete(Paths.get(tmpFilePath));
+    }
 
     @Override
     public void preStart() throws Exception {
         super.preStart();
+        logTraderActorSelection = actorSystem.actorSelection("/user/app/logTrader");
         actorSystem.eventStream().subscribe(self(), FileLine.class);
     }
 
@@ -56,34 +80,42 @@ public class FileActor extends AbstractActor {
                 .match(FileLine.class, fl -> {
                     onNewFileLine(fl);
                 })
-                .match(ReadInitialFile.class, msg -> {
-                    readInitialFile();
+                .match(SignalRequest.class, m -> {
+                    onSignalRequest(m);
                 })
                 .matchAny(m -> recievedUnknown(m))
                 .build();
+    }
+
+    private void onSignalRequest(SignalRequest m) {
+        logTraderActorId = m.actorId;
+        publishSignal();
     }
 
     private void recievedUnknown(Object m) {
     }
 
     private Signal.Action currAction = Signal.Action.WAIT;
-    private Signal.Position currTgtPosition = Signal.Position.ZERO;
 
-    private void onNewLine(String line, boolean tailer) {
-        if (tailer && !fileLoaded) {
-            return;
-        }
+    private void publishSignal() {
+        logTraderActorSelection.tell(new Signal(currAction, currTargetPosition, newLine, logTraderActorId), self());
+    }
 
+    private static double ZERO_POSITION = 0.0d;
+
+    private double currTargetPosition = ZERO_POSITION;
+
+    private void onNewLine(String line) {
         char signal = line.charAt(0);
         switch (signal) {
             case 'B': {
                 currAction = Signal.Action.BUY;
-                currTgtPosition = Signal.Position.LONG;
+                currTargetPosition = longSize;
             }
             break;
             case 'S': {
                 currAction = Signal.Action.SELL;
-                currTgtPosition = Signal.Position.SHORT;
+                currTargetPosition = -shortSize;
             }
             break;
             case 'W': {
@@ -92,15 +124,12 @@ public class FileActor extends AbstractActor {
             break;
             case 'F': {
                 currAction = Signal.Action.FLAT;
-                currTgtPosition = Signal.Position.ZERO;
+                currTargetPosition = ZERO_POSITION;
             }
             break;
         }
-        if (tailer) {
-            linesProcessed++;
-            context().parent().tell(new Signal(currAction, currTgtPosition, linesProcessed), self());
-        }
         // Draw lines in ui - ok
+        controller.onTgtPosition(currTargetPosition);
         controller.onFileLine(line);
         if (line.startsWith("B") || line.startsWith("S")) {
             controller.onLastSignalFileLine(line);
@@ -108,27 +137,17 @@ public class FileActor extends AbstractActor {
     }
 
     private void onNewFileLine(FileLine fileLine) {
-        onNewLine(fileLine.getLine(), true);
+        newLine = true;
+        onNewLine(fileLine.getLine());
+        publishSignal();
     }
 
-    private void readInitialFile() throws IOException {
+    public static final class SignalRequest {
+        private final UUID actorId;
 
-        String tmpFilePath = String.format("data/%s.tmp", UUID.randomUUID().toString());
-
-        Files.copy(Paths.get(filePath), Paths.get(tmpFilePath));
-
-        try (Stream<String> lines = Files.lines(Paths.get(tmpFilePath), Charset.defaultCharset())) {
-            lines.forEachOrdered(line -> {
-                linesProcessed++;
-                onNewLine(line, false);
-            });
+        public SignalRequest(UUID actorId) {
+            this.actorId = actorId;
         }
-        context().parent().tell(new Signal(currAction, currTgtPosition, linesProcessed), self());
-        Files.delete(Paths.get(tmpFilePath));
-        fileLoaded = true;
-    }
-
-    public static final class ReadInitialFile {
     }
 
     public static final class FileLine {
@@ -145,7 +164,7 @@ public class FileActor extends AbstractActor {
 
     }
 
-    public static final class Signal {
+    public static final class Signal extends MessageSentToExactActorInstance {
 
         public enum Action {
 
@@ -163,24 +182,25 @@ public class FileActor extends AbstractActor {
         }
 
         private final Action action;
-        private final Position targetPosition;
-        private final int linesProcessed;
+        private final double targetPosition;
+        private final boolean newLine;
 
-        public Signal(Action action, Position targetPosition, int linesProcessed) {
+        public Signal(Action action, double targetPosition, boolean newLine, UUID actorId) {
+            super(actorId);
             this.action = action;
             this.targetPosition = targetPosition;
-            this.linesProcessed = linesProcessed;
+            this.newLine = newLine;
         }
 
-        public int getLinesProcessed() {
-            return linesProcessed;
+        public boolean isNewLine() {
+            return newLine;
         }
 
         public Action getAction() {
             return action;
         }
 
-        public Position getTargetPosition() {
+        public double getTargetPosition() {
             return targetPosition;
         }
 

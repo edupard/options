@@ -11,6 +11,9 @@ public class MessageSentToExactActorInstance {
     }
 
     public boolean isActorInstaceEquals(UUID actorId) {
+        if (this.actorId == null) {
+            return false;
+        }
         return this.actorId.equals(actorId);
     }
 }

@@ -54,11 +54,7 @@ public class LogTraderActor extends AbstractActor {
     @Value("${ccy}")
     private String ccy;
 
-    @Value("${long.size}")
-    private double longSize;
 
-    @Value("${short.size}")
-    private double shortSize;
 
     protected int nextOrderId = -1;
 
@@ -71,12 +67,10 @@ public class LogTraderActor extends AbstractActor {
     @Autowired
     private ActorSystem actorSystem;
 
-    private ActorRef fileActor;
-
     @Autowired
     private StorageComponent storage;
 
-
+    private ActorSelection fileActorSelection;
     private ActorSelection emailActorSelection;
 
 
@@ -96,6 +90,12 @@ public class LogTraderActor extends AbstractActor {
     }
 
     public final static class SimulateError {
+    }
+
+    public static enum AdjustPosition {
+        LONG,
+        FLAT,
+        SHORT
     }
 
 
@@ -167,9 +167,29 @@ public class LogTraderActor extends AbstractActor {
                     if (m.isActorInstaceEquals(actorId)) {
                         onErrorWithMessage(m);
                     }
-                }).
-                match(FileActor.Signal.class, msg -> {
-                    onSignal(msg);
+                })
+                .match(FileActor.Signal.class, m -> {
+                    if (m.isActorInstaceEquals(actorId)) {
+                        onSignal(m);
+                    }
+                })
+                .match(IbGateway.OpenOrder.class, m-> {
+                    if (m.isActorInstaceEquals(actorId)) {
+                        onOpenOrder(m);
+                    }
+                })
+                .match(IbGateway.OrderStatus.class, m-> {
+                    if (m.isActorInstaceEquals(actorId)) {
+                        onOrderStatus(m);
+                    }
+                })
+                .match(IbGateway.UpdateAccountValue.class, m-> {
+                    if (m.isActorInstaceEquals(actorId)) {
+                        onUpdateAccountValue(m);
+                    }
+                })
+                .match(IbGateway.TickPrice.class, tp -> {
+                    onTickPrice(tp);
                 })
                 .match(StartByUserAction.class, m -> {
                     onStartByUser(m);
@@ -177,9 +197,31 @@ public class LogTraderActor extends AbstractActor {
                 .match(SimulateError.class, m -> {
                     onSimulateError(m);
                 })
+                .match(AdjustPosition.class, m-> {
+                    onAdjustPosition(m);
+                })
                 .matchAny(m -> recievedUnknown(m))
                 .build();
     }
+
+
+    private void onUpdateAccountValue(IbGateway.UpdateAccountValue m) {
+        if (m.getAccountName().equals(account)) {
+            switch (m.getKey()) {
+                case "InitMarginReq": {
+                    String initMargin = String.format("%s %s", m.getValue(), m.getCurrency());
+                    controller.onInitMargin(initMargin);
+                }
+                break;
+                case "NetLiquidation": {
+                    String nlv = String.format("%s %s", m.getValue(), m.getCurrency());
+                    controller.onNlv(nlv);
+                }
+                break;
+            }
+        }
+    }
+
 
     private FileActor.Signal signal;
 
@@ -189,39 +231,95 @@ public class LogTraderActor extends AbstractActor {
         }
     }
 
-    private static volatile Integer initializationSignalLine = null;
+    private void onSignal(FileActor.Signal m) {
+        signal = m;
+        targetPosition = signal.getTargetPosition();
+        placeOrder();
+    }
+
+    private int pendingOrderId = -1;
+    private double pendingOrderSize = 0;
+    private boolean schedulePlaceOrderCall = false;
 
     private void placeOrder() {
-        if (initializationSignalLine == null) {
-            initializationSignalLine = signal.getLinesProcessed();
-        }
-        if (initializationSignalLine == signal.getLinesProcessed()) {
+        if (initializing) {
             return;
         }
+//        if (!signal.isNewLine()) {
+//            return;
+//        }
         if (signal.getAction() == FileActor.Signal.Action.WAIT) {
             return;
         }
         if (!controller.isStarted()) {
             return;
         }
-        double positionDelta = targetPosition - position;
-        if (positionDelta != 0) {
-            placeMarketOrder(positionDelta);
-            //TODO: handle this properly
-            position = targetPosition;
-        }
 
+        if (pendingOrderId != -1) {
+            schedulePlaceOrderCall = true;
+            ibGateway.getClientSocket().cancelOrder(pendingOrderId);
+        }
+        else {
+            double positionDelta = targetPosition - position;
+            if (positionDelta != 0) {
+                String message = String.format("Log trader market order: %s %.0f ", symbol, positionDelta);
+                emailActorSelection.tell(new EmailActor.Email(message, message), self());
+
+                placeMarketOrder(positionDelta);
+            }
+        }
     }
 
-    private int currOrderId = -1;
+    @Value("${long.size}")
+    private double longSize;
 
-    private void placeMarketOrder(double positionDelta) {
+    @Value("${short.size}")
+    private double shortSize;
+
+    private static double ZERO_POSITION = 0.0d;
+
+    private void onAdjustPosition(AdjustPosition m) {
+//        if (pendingOrderId != -1) {
+//            getContext().system().scheduler().scheduleOnce(Duration.create(1, TimeUnit.SECONDS),
+//                    self(),
+//                    m,
+//                    getContext().dispatcher(),
+//                    self());
+//            return;
+//        }
+        double tgt = ZERO_POSITION;
+        switch (m) {
+            case FLAT:
+                tgt = ZERO_POSITION;
+                break;
+            case LONG:
+                tgt = longSize;
+                break;
+            case SHORT:
+                tgt = -shortSize;
+                break;
+        }
+        double positionDelta = tgt - position;
+        if (positionDelta != 0) {
+            String message = String.format("Log trader market order: %s %.0f ", symbol, positionDelta);
+            emailActorSelection.tell(new EmailActor.Email(message, message), self());
+            placeMarketOrder(positionDelta);
+        }
+    }
+
+    private Contract getContract() {
         Contract contract = new Contract();
         contract.secType(Types.SecType.FUT);
         contract.localSymbol(symbol);
         contract.exchange(exchange);
         contract.currency(ccy);
-        currOrderId = placeMarketOrderImpl(contract, positionDelta > 0 ? Types.Action.BUY : Types.Action.SELL, Math.abs(positionDelta), true);
+        return contract;
+    }
+
+    private void placeMarketOrder(double positionDelta) {
+        Contract contract = getContract();
+        pendingOrderId = placeMarketOrderImpl(contract, positionDelta > 0 ? Types.Action.BUY : Types.Action.SELL, Math.abs(positionDelta), false);
+        pendingOrderSize = Math.abs(positionDelta);
     }
 
     public int placeMarketOrderImpl(Contract contract, Types.Action action, double totalQuantity, boolean test) {
@@ -239,36 +337,22 @@ public class LogTraderActor extends AbstractActor {
 
 
     private void startListenFileSignals() {
-        fileActor.tell(new FileActor.ReadInitialFile(), self());
+        fileActorSelection.tell(new FileActor.SignalRequest(actorId), self());
     }
 
 
-    private void onSignal(FileActor.Signal m) {
-        signal = m;
-        targetPosition = 0;
-        switch (signal.getTargetPosition()) {
-            case LONG:
-                targetPosition = longSize;
-                break;
-            case SHORT:
-                targetPosition = -shortSize;
-                break;
-            case ZERO:
-                targetPosition = 0;
-                break;
-        }
-        controller.onTgtPosition(targetPosition);
-        placeOrder();
-
-    }
 
     // should not be called at all
     private void onErrorWithMessage(IbGateway.ErrorWithMessage m) {
-//        throw new RuntimeException(m.getErrorMsg());
+        String message = String.format("Log trader error: %s", m.getErrorMsg());
+        emailActorSelection.tell(new EmailActor.Email(message, message), self());
+        throw new RuntimeException(m.getErrorMsg());
     }
 
     // Handles errors generated within the API itself. If an exception is thrown within the API code it will be notified here. Possible cases include errors while reading the information from the socket or even mishandling at EWrapper's implementing class.
     private void onErrorWithException(IbGateway.ErrorWithException m) {
+        String message = String.format("Log trader error: %s", m.getReason().getMessage());
+        emailActorSelection.tell(new EmailActor.Email(message, message), self());
         throw new RuntimeException(m.getReason());
     }
 
@@ -312,7 +396,9 @@ public class LogTraderActor extends AbstractActor {
                 String message = "Log trader: reconnected to IB";
                 emailActorSelection.tell(new EmailActor.Email(message, message), self());
 
+                requestMarketData();
                 requestExecutions();
+                requestAccountUpdates();
             }
         }
 
@@ -344,7 +430,7 @@ public class LogTraderActor extends AbstractActor {
     public void preStart() throws Exception {
         super.preStart();
 
-        fileActor = getContext().actorOf(springExtension.props(FileActor.BEAN_NAME), "file");
+        fileActorSelection = actorSystem.actorSelection("/user/file");
 
         emailActorSelection = actorSystem.actorSelection("/user/email");
     }
@@ -370,10 +456,7 @@ public class LogTraderActor extends AbstractActor {
     public void postConstruct() {
         controller.onApiConnection(apiConnection);
         controller.onIbConnection(ibConnection);
-        controller.onFileLine("NO RECORD");
-        controller.onLastSignalFileLine("NO SIGNAL RECORD");
         controller.onUnknownPosition();
-        controller.onUnknownTgtPosition();
     }
 
     private void onStart(Start m) {
@@ -389,8 +472,6 @@ public class LogTraderActor extends AbstractActor {
         for (Trade t : storage.readTrades()) {
             processedTrades.add(t.getExecId());
         }
-        controller.onPosition(position);
-
         ibGateway.connect(host, port, clientId);
     }
 
@@ -404,8 +485,12 @@ public class LogTraderActor extends AbstractActor {
     //OK
     private void onNextValidId(IbGateway.NextValidId m) {
         nextOrderId = m.getNextValidId();
+        requestMarketData();
         requestExecutions();
+        requestAccountUpdates();
     }
+
+
 
 
     //OK
@@ -417,6 +502,22 @@ public class LogTraderActor extends AbstractActor {
         throw new RuntimeException("test");
     }
 
+    private void onTickPrice(IbGateway.TickPrice tp) {
+        if (tp.isLast() || tp.isClose()) {
+            controller.onLastPx(tp.getPrice());
+
+        }
+    }
+
+    int mktDataReqId = 1;
+    private void requestMarketData() {
+        Contract contract = getContract();
+        ibGateway.getClientSocket().reqMktData(mktDataReqId, contract, "", false, false, null);
+    }
+
+    public void requestAccountUpdates() {
+        ibGateway.getClientSocket().reqAccountUpdates(true, account);
+    }
     //OK
     private void requestExecutions() {
         ibGateway.getClientSocket().reqExecutions(1, new ExecutionFilter());
@@ -440,6 +541,8 @@ public class LogTraderActor extends AbstractActor {
 
     private Set<String> processedTrades = new HashSet<>();
 
+    private static final double ZERO_POS_TRESHOLD = 1e-6;
+
     private void onExecDetails(IbGateway.ExecDetails m) {
         if (!processedTrades.contains(m.getExecution().execId())
                 && m.getExecution().acctNumber().equals(account)
@@ -456,7 +559,54 @@ public class LogTraderActor extends AbstractActor {
             storage.storeTrade(m);
             storage.storePositions(position);
             controller.onPosition(position);
+
+            if (m.getExecution().orderId() == pendingOrderId) {
+                pendingOrderSize -= m.getExecution().shares();
+                if (Math.abs(pendingOrderSize) < ZERO_POS_TRESHOLD)
+                {
+                    pendingOrderId = -1;
+                    pendingOrderSize = 0.0d;
+                    if (schedulePlaceOrderCall) {
+                        schedulePlaceOrderCall = false;
+                        placeOrder();
+                    }
+                }
+            }
         }
+    }
+
+    private static Set<OrderStatus> finalOrderStatus = new HashSet<>();
+
+    static  {
+        finalOrderStatus.add(OrderStatus.Filled);
+        finalOrderStatus.add(OrderStatus.Cancelled);
+        finalOrderStatus.add(OrderStatus.Inactive);
+    }
+
+    private void processOrderStatus(int orderId, OrderStatus orderStatus) {
+        if (orderId == pendingOrderId) {
+            if (orderStatus == OrderStatus.Inactive) {
+                String message = "Log trader: order rejected";
+                emailActorSelection.tell(new EmailActor.Email(message, message), self());
+            }
+            if (finalOrderStatus.contains(orderStatus)) {
+                pendingOrderId = -1;
+                pendingOrderSize = 0.0d;
+                if (schedulePlaceOrderCall) {
+                    schedulePlaceOrderCall = false;
+                    placeOrder();
+                }
+            }
+        }
+    }
+
+    private void onOpenOrder(IbGateway.OpenOrder m) {
+        processOrderStatus(m.getOrderId(), m.getOrderState().status());
+    }
+
+    private void onOrderStatus(IbGateway.OrderStatus m) {
+        OrderStatus orderStatus = OrderStatus.get(m.getStatus());
+        processOrderStatus(m.getOrderId(), orderStatus);
     }
 
     boolean initializing = true;
@@ -464,6 +614,7 @@ public class LogTraderActor extends AbstractActor {
     private void onExecDetailsEnd(IbGateway.ExecDetailsEnd m) {
         if (initializing) {
             startListenFileSignals();
+            controller.onPosition(position);
         }
         initializing = false;
     }

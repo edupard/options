@@ -41,6 +41,13 @@ public class MainController {
     @FXML
     private Label lblIbConnection;
 
+    @FXML
+    private Label lblInitMargin;
+    @FXML
+    private Label lblNlv;
+    @FXML
+    private Label lblLastPx;
+
 
     @FXML
     private Label lblAccount;
@@ -88,13 +95,20 @@ public class MainController {
         lblAccount.setText(account);
         lblSymbol.setText(symbol);
         btnStartStop.setStyle("-fx-base: red;");
+
+        lblTgtPosition.setText("tgt: unknown");
+        lblTgtPosition.setTextFill(Color.RED);
+
+        lblInitMargin.setText("");
+        lblNlv.setText("");
+        lblLastPx.setText("");
     }
 
     public void onPosition(double position) {
         Platform.runLater(() -> {
             String sPosition = String.format("position: %.0f", position);
             lblPosition.setText(sPosition);
-            lblPosition.setTextFill(Color.GREEN);
+            lblPosition.setTextFill(Color.BLACK);
         });
     }
 
@@ -102,14 +116,7 @@ public class MainController {
         Platform.runLater(() -> {
             String sPosition = String.format("tgt: %.0f", position);
             lblTgtPosition.setText(sPosition);
-            lblTgtPosition.setTextFill(Color.GREEN);
-        });
-    }
-
-    public void onUnknownTgtPosition() {
-        Platform.runLater(() -> {
-            lblTgtPosition.setText("tgt: unknown");
-            lblTgtPosition.setTextFill(Color.RED);
+            lblTgtPosition.setTextFill(Color.BLACK);
         });
     }
 
@@ -178,4 +185,46 @@ public class MainController {
         logTraderActor.tell(new LogTraderActor.SimulateError(), null);
     }
 
+    public void onInitMargin(String initMargin) {
+        Platform.runLater(() -> {
+            lblInitMargin.setText(initMargin);
+        });
+    }
+
+    public void onNlv(String nlv) {
+        Platform.runLater(() -> {
+            lblNlv.setText(nlv);
+        });
+    }
+
+    public void onLastPx(double price) {
+        Platform.runLater(() -> {
+            lblLastPx.setText(String.format("%.2f", price));
+        });
+    }
+
+    @FXML
+    public void onLong() {
+        onAdjustPosition(LogTraderActor.AdjustPosition.LONG);
+    }
+
+    @FXML
+    public void onFlat() {
+        onAdjustPosition(LogTraderActor.AdjustPosition.FLAT);
+    }
+
+    @FXML
+    public void onShort() {
+        onAdjustPosition(LogTraderActor.AdjustPosition.SHORT);
+    }
+
+    private void onAdjustPosition(LogTraderActor.AdjustPosition m) {
+        if (started)
+        {
+            btnStartStop.setText("Start");
+            btnStartStop.setStyle("-fx-base: red;");
+        }
+        started = false;
+        logTraderActor.tell(m, null);
+    }
 }
