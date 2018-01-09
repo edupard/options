@@ -20,6 +20,7 @@ import javax.annotation.PostConstruct;
 import java.time.Instant;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 
 import static com.skywind.delta_hedger.actors.HedgerActor.BEAN_NAME;
 
@@ -75,6 +76,18 @@ public class HedgerActor extends AbstractActor {
 
     public static final class RefreshTimebars {
 
+    }
+
+    public static final class RefreshOpenOrders {
+        private final boolean includeManualOrders;
+
+        public RefreshOpenOrders(boolean includeManualOrders) {
+            this.includeManualOrders = includeManualOrders;
+        }
+
+        public boolean isIncludeManualOrders() {
+            return includeManualOrders;
+        }
     }
 
     public static final class IrChanged {
@@ -193,9 +206,29 @@ public class HedgerActor extends AbstractActor {
                         onErrorWithMessage(m);
                     }
                 })
+                .match(IbGateway.OpenOrder.class, m-> {
+                    if (m.isActorInstaceEquals(actorId)) {
+                        onOpenOrder(m);
+                    }
+                })
+                .match(IbGateway.OpenOrderEnd.class, m-> {
+                    if (m.isActorInstaceEquals(actorId)) {
+                        onOpenOrderEnd(m);
+                    }
+                })
+                .match(IbGateway.OrderStatus.class, m-> {
+                    if (m.isActorInstaceEquals(actorId)) {
+                        onOrderStatus(m);
+                    }
+                })
+                .match(RefreshOpenOrders.class, m-> {
+                    onRefreshOpenOrders(m);
+                })
                 .matchAny(m -> recievedUnknown(m))
                 .build();
     }
+
+
 
     // should not be called at all
     private void onErrorWithMessage(IbGateway.ErrorWithMessage m) {
@@ -342,6 +375,104 @@ public class HedgerActor extends AbstractActor {
     private void onNextValidId(IbGateway.NextValidId m) {
         onPositionsUpdate();
         requestExecutions();
+    }
+
+    private boolean includeManualOrders = false;
+
+    private void onRefreshOpenOrders(RefreshOpenOrders m) {
+        openOrders.clear();
+        includeManualOrders = m.isIncludeManualOrders();
+        ibGateway.getClientSocket().reqOpenOrders();
+    }
+
+    private Map<Integer, HedgerOrder> openOrders = new HashMap<>();
+
+    private void onOpenOrder(IbGateway.OpenOrder m) {
+        if (!m.getOrder().account().equals(account)) {
+            return;
+        }
+        if (m.getOrder().orderType() != OrderType.STP) {
+            return;
+        }
+        if (!includeManualOrders && m.getOrderId() < 0) {
+            return;
+        }
+        String localSymbol = m.getContract().localSymbol();
+        int orderId = m.getOrderId();
+        HedgerOrder.Side orderSide = HedgerOrder.Side.BUY;
+        switch (m.getOrder().action()) {
+            case BUY:
+                orderSide = HedgerOrder.Side.BUY;
+                break;
+            case SELL:
+            case SSHORT:
+                orderSide = HedgerOrder.Side.SELL;
+                break;
+        }
+        HedgerOrder.State orderState = HedgerOrder.State.ACTIVE;
+        switch (m.getOrderState().status()) {
+            case Cancelled:
+            case ApiCancelled:
+            case PendingCancel:
+                orderState = HedgerOrder.State.CANCELLED;
+                break;
+            case Filled:
+                orderState = HedgerOrder.State.FILLED;
+                break;
+            case Inactive:
+                orderState = HedgerOrder.State.REJECTED;
+                break;
+        }
+        double px = m.getOrder().auxPrice();
+        double qty = m.getOrder().totalQuantity();
+
+        HedgerOrder ho = new HedgerOrder(localSymbol,
+                orderId,
+                orderSide,
+                orderState,
+                qty,
+                px);
+        if (!openOrders.containsKey(orderId)) {
+            openOrders.put(orderId, ho);
+        }
+        if (ho.isTerminalState()) {
+            openOrders.remove(orderId);
+        }
+    }
+
+    private void onOrderStatus(IbGateway.OrderStatus m) {
+        if (m.getClientId() != clientId) {
+            return;
+        }
+        if (!includeManualOrders && m.getOrderId() < 0) {
+            return;
+        }
+        if (openOrders.containsKey(m.getOrderId())){
+            HedgerOrder ho = openOrders.get(m.getOrderId());
+            OrderStatus orderStatus = OrderStatus.get(m.getStatus());
+            switch (orderStatus) {
+                case Cancelled:
+                case ApiCancelled:
+                case PendingCancel:
+                    ho.onCancelled();
+                    break;
+                case Filled:
+                    ho.onFilled();
+                    break;
+                case Inactive:
+                    ho.onRejected();
+                    break;
+            }
+            if (ho.isTerminalState()) {
+                openOrders.remove(m.getOrderId());
+            }
+        }
+    }
+
+    private void onOpenOrderEnd(IbGateway.OpenOrderEnd m) {
+        List<HedgerOrder> oo = openOrders.values().stream().collect(Collectors.toList());
+
+        controller.onOpenOrders(oo);
     }
 
     private void onReloadPositions(ReloadPositions m) {

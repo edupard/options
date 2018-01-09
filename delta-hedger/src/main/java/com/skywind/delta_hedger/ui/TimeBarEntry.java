@@ -53,21 +53,10 @@ public class TimeBarEntry {
         duration.set(tb.getDuration());
         barTime.set(tb.getBarTime());
 
-        double tbOpen = tb.getOpen();
-        double openWhole = Math.floor(tbOpen);
-        double openPart = tbOpen - openWhole;
-        double openPartConverted = Math.round(openPart * futPriceCoeff);
-        double openConverted = openWhole + openPartConverted / 1000;
-
         open.set(convertPrice(tb.getOpen(), futPriceCoeff));
         high.set(convertPrice(tb.getHigh(), futPriceCoeff));
         low.set(convertPrice(tb.getLow(), futPriceCoeff));
         close.set(convertPrice(tb.getClose(), futPriceCoeff));
-
-//        open.set(tb.getOpen());
-//        high.set(tb.getHigh());
-//        low.set(tb.getLow());
-//        close.set(tb.getClose());
 
         volume.set(tb.getVolume());
         lut.set(FMT.format(tb.getLut()));

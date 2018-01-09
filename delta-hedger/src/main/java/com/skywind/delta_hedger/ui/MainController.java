@@ -3,6 +3,7 @@ package com.skywind.delta_hedger.ui;
 import akka.actor.ActorSelection;
 import akka.actor.ActorSystem;
 import com.skywind.delta_hedger.actors.HedgerActor;
+import com.skywind.delta_hedger.actors.HedgerOrder;
 import com.skywind.delta_hedger.actors.Position;
 import com.skywind.spring_javafx_integration.ui.FormatedCellFactory;
 import javafx.application.Platform;
@@ -13,10 +14,7 @@ import javafx.collections.transformation.FilteredList;
 import javafx.collections.transformation.SortedList;
 import javafx.fxml.FXML;
 import javafx.scene.Parent;
-import javafx.scene.control.Alert;
-import javafx.scene.control.Label;
-import javafx.scene.control.TableColumn;
-import javafx.scene.control.TableView;
+import javafx.scene.control.*;
 import javafx.scene.control.cell.CheckBoxTableCell;
 import javafx.scene.control.cell.TextFieldTableCell;
 import javafx.scene.layout.AnchorPane;
@@ -38,7 +36,7 @@ public class MainController {
     @Autowired
     private ActorSystem actorSystem;
 
-    private ActorSelection logTraderActor;
+    private ActorSelection hedgerActor;
 
     @FXML
     private AnchorPane anchor;
@@ -80,6 +78,23 @@ public class MainController {
     private final FilteredList<PositionEntry> filteredPositionsData = new FilteredList<>(positionsData, p -> true);
     private final SortedList<PositionEntry> sortedPositionsData = new SortedList<>(filteredPositionsData);
 
+
+    @FXML
+    private TableView<OpenOrderEntry> tblOpenOrders;
+    @FXML
+    private TableColumn<OpenOrderEntry, Integer> colOoOrderId;
+    @FXML
+    private TableColumn<OpenOrderEntry, String> colOoCode;
+    @FXML
+    private TableColumn<OpenOrderEntry, String> colOoSide;
+    @FXML
+    private TableColumn<OpenOrderEntry, Double> colOoPx;
+    @FXML
+    private TableColumn<OpenOrderEntry, Double> colOoQty;
+
+    private final ObservableList<OpenOrderEntry> ooData = FXCollections.observableArrayList();
+    private final FilteredList<OpenOrderEntry> filteredOoData = new FilteredList<>(ooData, p -> true);
+    private final SortedList<OpenOrderEntry> sortedOoData = new SortedList<>(filteredOoData);
 
 
     @FXML
@@ -125,8 +140,7 @@ public class MainController {
             TimeBarEntry timeBarEntry = timeBarsDataMap.get(tb);
             timeBarEntry.updateUi(tb, futPriceCoeff);
             timeBarsDataMap.put(tb, timeBarEntry);
-        }
-        else {
+        } else {
             TimeBarEntry timeBarEntry = new TimeBarEntry();
             timeBarEntry.updateUi(tb, futPriceCoeff);
             timeBarData.add(timeBarEntry);
@@ -135,21 +149,32 @@ public class MainController {
     }
 
     public void onClearTimeBars() {
-        Platform.runLater(()-> {
+        Platform.runLater(() -> {
             timeBarsDataMap.clear();
             timeBarData.clear();
         });
     }
 
     public void onApiConnection(boolean apiConnection) {
-        Platform.runLater(()->{
+        Platform.runLater(() -> {
             lblApiConnection.setTextFill(apiConnection ? Color.GREEN : Color.RED);
         });
     }
 
     public void onIbConnection(boolean ibConnection) {
-        Platform.runLater(()->{
+        Platform.runLater(() -> {
             lblIbConnection.setTextFill(ibConnection ? Color.GREEN : Color.RED);
+        });
+    }
+
+    public void onOpenOrders(List<HedgerOrder> oo) {
+        Platform.runLater(() -> {
+            ooData.clear();
+            oo.stream().forEach(ho -> {
+                OpenOrderEntry ooEntry = new OpenOrderEntry();
+                ooEntry.updateUi(ho);
+                ooData.add(ooEntry);
+            });
         });
     }
 
@@ -161,7 +186,7 @@ public class MainController {
             this.fullUpdate = fullUpdate;
         }
 
-        public static enum Action { UPDATE, DELETE};
+        public static enum Action {UPDATE, DELETE};
 
         public static final class BatchElement {
             private final Action action;
@@ -222,7 +247,7 @@ public class MainController {
 
     @PostConstruct
     public void init() {
-        logTraderActor = actorSystem.actorSelection("/user/app/logTrader");
+        hedgerActor = actorSystem.actorSelection("/user/app/hedger");
 
         colSelected.setCellFactory(
                 CheckBoxTableCell.forTableColumn(colSelected)
@@ -252,7 +277,7 @@ public class MainController {
             pe.irProperty().addListener(new ChangeListener() {
                 @Override
                 public void changed(ObservableValue observable, Object oldValue, Object newValue) {
-                    logTraderActor.tell(new HedgerActor.IrChanged(pe.localSymbolProperty().getValue(), (double) newValue), null);
+                    hedgerActor.tell(new HedgerActor.IrChanged(pe.localSymbolProperty().getValue(), (double) newValue), null);
                 }
             });
 
@@ -265,7 +290,7 @@ public class MainController {
             pe.volProperty().addListener(new ChangeListener() {
                 @Override
                 public void changed(ObservableValue observable, Object oldValue, Object newValue) {
-                    logTraderActor.tell(new HedgerActor.VolChanged(pe.localSymbolProperty().getValue(), (double) newValue), null);
+                    hedgerActor.tell(new HedgerActor.VolChanged(pe.localSymbolProperty().getValue(), (double) newValue), null);
                 }
             });
 
@@ -279,6 +304,16 @@ public class MainController {
 
         sortedPositionsData.comparatorProperty().bind(tblPositions.comparatorProperty());
         tblPositions.setItems(sortedPositionsData);
+
+        colOoOrderId.setCellValueFactory(cellData -> cellData.getValue().orderIdProperty().asObject());
+        colOoCode.setCellValueFactory(cellData -> cellData.getValue().codeProperty());
+        colOoSide.setCellValueFactory(cellData -> cellData.getValue().sideProperty());
+        colOoPx.setCellValueFactory(cellData -> cellData.getValue().pxProperty().asObject());
+        colOoQty.setCellValueFactory(cellData -> cellData.getValue().qtyProperty().asObject());
+        colOoQty.setCellFactory(new FormatedCellFactory<>("%.0f"));
+
+        sortedOoData.comparatorProperty().bind(tblOpenOrders.comparatorProperty());
+        tblOpenOrders.setItems(sortedOoData);
 
 
         colTbCode.setCellValueFactory(cellData -> cellData.getValue().localSymbolProperty());
@@ -314,7 +349,7 @@ public class MainController {
     }
 
     public void onPositionsUpdate(UpdateUiPositionsBatch uiUpdates) {
-        Platform.runLater(()->{
+        Platform.runLater(() -> {
             if (uiUpdates.isFullUpdate()) {
                 positionsData.clear();
                 positionsDataMap.clear();
@@ -324,15 +359,13 @@ public class MainController {
                     if (positionsDataMap.containsKey(e.localSymbol)) {
                         PositionEntry pe = positionsDataMap.get(e.localSymbol);
                         pe.updateUi(e.pi);
-                    }
-                    else {
+                    } else {
                         PositionEntry pe = new PositionEntry();
                         pe.updateUi(e.pi);
                         positionsDataMap.put(e.localSymbol, pe);
                         positionsData.add(pe);
                     }
-                }
-                else {
+                } else {
                     if (positionsDataMap.containsKey(e.localSymbol)) {
                         PositionEntry pe = positionsDataMap.get(e.localSymbol);
                         positionsData.remove(pe);
@@ -354,11 +387,19 @@ public class MainController {
 
     @FXML
     public void onReloadPositions() {
-        logTraderActor.tell(new HedgerActor.ReloadPositions(), null);
+        hedgerActor.tell(new HedgerActor.ReloadPositions(), null);
     }
 
     @FXML
     public void onRefreshTimebars() {
-        logTraderActor.tell(new HedgerActor.RefreshTimebars(), null);
+        hedgerActor.tell(new HedgerActor.RefreshTimebars(), null);
+    }
+
+    @FXML
+    CheckBox cbIncludeManualOrders;
+
+    @FXML
+    public void onRefreshOpenOrders() {
+        hedgerActor.tell(new HedgerActor.RefreshOpenOrders(cbIncludeManualOrders.isSelected()), null);
     }
 }

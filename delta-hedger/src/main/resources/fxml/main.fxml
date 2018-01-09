@@ -8,8 +8,7 @@
 <?import javafx.scene.control.*?>
 <?import javafx.scene.layout.*?>
 
-
-<AnchorPane fx:id="anchor" prefHeight="710.0" prefWidth="1067.0" xmlns="http://javafx.com/javafx/8" xmlns:fx="http://javafx.com/fxml/1" fx:controller="com.skywind.delta_hedger.ui.MainController">
+<AnchorPane fx:id="anchor" prefHeight="838.0" prefWidth="1067.0" xmlns="http://javafx.com/javafx/8" xmlns:fx="http://javafx.com/fxml/1" fx:controller="com.skywind.delta_hedger.ui.MainController">
    <children>
       <Button layoutX="57.0" layoutY="270.0" mnemonicParsing="false" onAction="#onReloadPositions" text="Reload positions" />
       <TableView fx:id="tblPositions" editable="true" layoutX="57.0" layoutY="56.0" prefHeight="200.0" prefWidth="974.0">
@@ -52,5 +51,16 @@
             <Font name="System Bold" size="12.0" />
          </font>
       </Label>
+      <TableView fx:id="tblOpenOrders" editable="true" layoutX="57.0" layoutY="578.0" prefHeight="200.0" prefWidth="472.0">
+         <columns>
+            <TableColumn fx:id="colOoOrderId" minWidth="2.0" prefWidth="73.0" text="orderId" />
+            <TableColumn fx:id="colOoCode" prefWidth="136.0" text="code" />
+            <TableColumn fx:id="colOoSide" prefWidth="61.0" text="side" />
+            <TableColumn fx:id="colOoPx" prefWidth="99.0" text="px" />
+            <TableColumn fx:id="colOoQty" prefWidth="98.0" text="qty" />
+         </columns>
+      </TableView>
+      <Button layoutX="57.0" layoutY="787.0" mnemonicParsing="false" onAction="#onRefreshOpenOrders" text="Refresh open orders" />
+      <CheckBox fx:id="cbIncludeManualOrders" layoutX="209.0" layoutY="791.0" mnemonicParsing="false" text="include manual orders" />
    </children>
 </AnchorPane>
