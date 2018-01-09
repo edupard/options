@@ -47,6 +47,9 @@ public class MainController {
     private Label lblIbConnection;
 
     @FXML
+    private Label lblPythonLastResult;
+
+    @FXML
     private TableView<PositionEntry> tblPositions;
     @FXML
     private TableColumn<PositionEntry, Boolean> colSelected;
@@ -88,7 +91,7 @@ public class MainController {
     @FXML
     private TableColumn<OpenOrderEntry, String> colOoSide;
     @FXML
-    private TableColumn<OpenOrderEntry, Double> colOoPx;
+    private TableColumn<OpenOrderEntry, String> colOoPx;
     @FXML
     private TableColumn<OpenOrderEntry, Double> colOoQty;
 
@@ -118,9 +121,6 @@ public class MainController {
     @FXML
     private TableColumn<TimeBarEntry, String> colTbLut;
 
-    @Value("${fut.price.coeff}")
-    private double futPriceCoeff;
-
     private Map<HedgerActor.Timebar, TimeBarEntry> timeBarsDataMap = new HashMap<>();
     private final ObservableList<TimeBarEntry> timeBarData = FXCollections.observableArrayList();
     private final FilteredList<TimeBarEntry> filteredTimeBarData = new FilteredList<>(timeBarData, p -> true);
@@ -138,11 +138,11 @@ public class MainController {
     public void onTimeBar(HedgerActor.Timebar tb) {
         if (timeBarsDataMap.containsKey(tb)) {
             TimeBarEntry timeBarEntry = timeBarsDataMap.get(tb);
-            timeBarEntry.updateUi(tb, futPriceCoeff);
+            timeBarEntry.updateUi(tb);
             timeBarsDataMap.put(tb, timeBarEntry);
         } else {
             TimeBarEntry timeBarEntry = new TimeBarEntry();
-            timeBarEntry.updateUi(tb, futPriceCoeff);
+            timeBarEntry.updateUi(tb);
             timeBarData.add(timeBarEntry);
             timeBarsDataMap.put(tb, timeBarEntry);
         }
@@ -177,6 +177,8 @@ public class MainController {
             });
         });
     }
+
+
 
     public static final class UpdateUiPositionsBatch {
 
@@ -247,6 +249,8 @@ public class MainController {
 
     @PostConstruct
     public void init() {
+        lblPythonLastResult.setText("");
+
         hedgerActor = actorSystem.actorSelection("/user/app/hedger");
 
         colSelected.setCellFactory(
@@ -308,7 +312,7 @@ public class MainController {
         colOoOrderId.setCellValueFactory(cellData -> cellData.getValue().orderIdProperty().asObject());
         colOoCode.setCellValueFactory(cellData -> cellData.getValue().codeProperty());
         colOoSide.setCellValueFactory(cellData -> cellData.getValue().sideProperty());
-        colOoPx.setCellValueFactory(cellData -> cellData.getValue().pxProperty().asObject());
+        colOoPx.setCellValueFactory(cellData -> cellData.getValue().pxProperty());
         colOoQty.setCellValueFactory(cellData -> cellData.getValue().qtyProperty().asObject());
         colOoQty.setCellFactory(new FormatedCellFactory<>("%.0f"));
 
@@ -321,20 +325,9 @@ public class MainController {
         colTbBarTime.setCellValueFactory(cellData -> cellData.getValue().barTimeProperty());
 
         colTbOpen.setCellValueFactory(cellData -> cellData.getValue().openProperty());
-//        colTbOpen.setCellValueFactory(cellData -> cellData.getValue().openProperty().asObject());
-//        colTbOpen.setCellFactory(new FormatedCellFactory<>("%.3f"));
-
         colTbHigh.setCellValueFactory(cellData -> cellData.getValue().highProperty());
-//        colTbHigh.setCellValueFactory(cellData -> cellData.getValue().highProperty().asObject());
-//        colTbHigh.setCellFactory(new FormatedCellFactory<>("%.3f"));
-
         colTbLow.setCellValueFactory(cellData -> cellData.getValue().lowProperty());
-//        colTbLow.setCellValueFactory(cellData -> cellData.getValue().lowProperty().asObject());
-//        colTbLow.setCellFactory(new FormatedCellFactory<>("%.3f"));
-
         colTbClose.setCellValueFactory(cellData -> cellData.getValue().closeProperty());
-//        colTbClose.setCellValueFactory(cellData -> cellData.getValue().closeProperty().asObject());
-//        colTbClose.setCellFactory(new FormatedCellFactory<>("%.3f"));
 
         colTbVolume.setCellValueFactory(cellData -> cellData.getValue().volumeProperty().asObject());
         colTbVolume.setCellFactory(new FormatedCellFactory<>("%.0f"));
@@ -401,5 +394,33 @@ public class MainController {
     @FXML
     public void onRefreshOpenOrders() {
         hedgerActor.tell(new HedgerActor.RefreshOpenOrders(cbIncludeManualOrders.isSelected()), null);
+    }
+
+    @FXML
+    public void onRunPython() {
+        lblPythonLastResult.setText("Running...");
+        lblPythonLastResult.setTextFill(Color.BLUE);
+        hedgerActor.tell(new HedgerActor.RunPython(), null);
+    }
+
+    public void onPythonScriptResult(HedgerActor.PythonScriptResult m) {
+
+        Platform.runLater(() -> {
+            switch (m.getResult()) {
+                case FAILURE:
+                    lblPythonLastResult.setText("Failure");
+                    lblPythonLastResult.setTextFill(Color.RED);
+                    break;
+                case SUCCESS:
+                    lblPythonLastResult.setText("Success");
+                    lblPythonLastResult.setTextFill(Color.GREEN);
+                    break;
+                case TIMEOUT:
+                    lblPythonLastResult.setText("Timeout");
+                    lblPythonLastResult.setTextFill(Color.RED);
+                    break;
+            }
+
+        });
     }
 }

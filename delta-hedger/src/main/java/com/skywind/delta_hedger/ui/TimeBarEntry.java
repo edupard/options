@@ -41,26 +41,18 @@ public class TimeBarEntry {
             .toFormatter()
             .withZone(ZoneId.systemDefault());
 
-    private static String convertPrice(double px, double futPriceCoeff) {
-        double pxWhole = Math.floor(px);
-        double pxPart = px - pxWhole;
-        double pxPartConverted = Math.round(pxPart * futPriceCoeff);
-        return String.format("%.0f'%.0f", pxWhole, pxPartConverted);
-    }
-
-    public void updateUi(HedgerActor.Timebar tb, double futPriceCoeff) {
+    public void updateUi(HedgerActor.Timebar tb) {
         localSymbol.set(tb.getLocalSymbol());
         duration.set(tb.getDuration());
         barTime.set(tb.getBarTime());
 
-        open.set(convertPrice(tb.getOpen(), futPriceCoeff));
-        high.set(convertPrice(tb.getHigh(), futPriceCoeff));
-        low.set(convertPrice(tb.getLow(), futPriceCoeff));
-        close.set(convertPrice(tb.getClose(), futPriceCoeff));
+        open.set(tb.getOpenView());
+        high.set(tb.getHighView());
+        low.set(tb.getLowView());
+        close.set(tb.getCloseView());
 
         volume.set(tb.getVolume());
         lut.set(FMT.format(tb.getLut()));
-
     }
 
     public StringProperty localSymbolProperty() {
@@ -95,5 +87,7 @@ public class TimeBarEntry {
         return volume;
     }
 
-    public StringProperty lutProperty() { return lut; }
+    public StringProperty lutProperty() {
+        return lut;
+    }
 }

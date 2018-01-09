@@ -15,6 +15,9 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeFormatterBuilder;
 import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
@@ -37,7 +40,16 @@ public class StorageUtils {
     private static final String COLUMN_TIME = "Time";
     private static final String COLUMN_IR = "Ir";
     private static final String COLUMN_VOL = "Vol";
+    private static final String COLUMN_CODE = "Code";
+    private static final String COLUMN_UNDERLYING_CODE = "Underlying";
+    private static final String COLUMN_EXPIRY = "Expiry";
 
+    private static final String COLUMN_BAR_LENGTH = "Length";
+    private static final String COLUMN_OPEN = "Open";
+    private static final String COLUMN_HIGH = "High";
+    private static final String COLUMN_LOW = "Low";
+    private static final String COLUMN_CLOSE = "Close";
+    private static final String COLUMN_VOLUME = "Volume";
 
     private static final String DATA_DIR_PATH = "data";
     private static final String POSITIONS_FILE_PATH = "data/positions.csv";
@@ -79,6 +91,82 @@ public class StorageUtils {
             COLUMN_EXEC_ID,
             COLUMN_TIME
     );
+
+    private final static CSVFormat CSV_INPUT_POSITIONS_FORMAT = CSVFormat.DEFAULT
+            .withRecordSeparator(System.lineSeparator())
+            .withHeader(
+                    COLUMN_CODE,
+                    COLUMN_UNDERLYING_CODE,
+                    COLUMN_SEC_TYPE,
+                    COLUMN_EXPIRY,
+                    COLUMN_STRIKE,
+                    COLUMN_RIGHT,
+                    COLUMN_MULTIPLIER,
+                    COLUMN_POSITION,
+                    COLUMN_IR,
+                    COLUMN_VOL
+            );
+
+    private static final DateTimeFormatter TIME_FMT = new DateTimeFormatterBuilder()
+            .appendPattern("yyyy-MM-dd HH:mm")
+            .toFormatter()
+            .withZone(ZoneId.systemDefault());
+
+    public static void prepareInputPositions(Map<String, Position> positionsByLocalSymbol, String positionsFileName) {
+        try (CSVPrinter writer = new CSVPrinter(new FileWriter(positionsFileName, false), CSV_INPUT_POSITIONS_FORMAT)) {
+            for (Map.Entry<String, Position> entry : positionsByLocalSymbol.entrySet()) {
+                Position pi = entry.getValue();
+                //Check contract details and expiry
+                writer.printRecord(
+                        pi.getContract().localSymbol(),
+                        pi.getContractDetails().underSymbol(),
+                        pi.getContract().secType(),
+                        TIME_FMT.format(pi.getExpiry()),
+                        pi.getContract().strike(),
+                        pi.getContract().right(),
+                        pi.getContract().multiplier(),
+                        pi.getPos(),
+                        pi.getIr(),
+                        pi.getVol()
+                );
+            }
+        } catch (IOException ex) {
+            throw new RuntimeException(ex);
+        }
+    }
+
+    private final static CSVFormat CSV_INPUT_TIME_BARS_FORMAT = CSVFormat.DEFAULT
+            .withRecordSeparator(System.lineSeparator())
+            .withHeader(
+                    COLUMN_CODE,
+                    COLUMN_TIME,
+                    COLUMN_BAR_LENGTH,
+                    COLUMN_OPEN,
+                    COLUMN_HIGH,
+                    COLUMN_LOW,
+                    COLUMN_CLOSE,
+                    COLUMN_VOLUME
+            );
+
+    public static void prepareInputBars(Map<HedgerActor.TimeBarRequest, HedgerActor.TimebarArray> currentBars, String inputTimeBarsFileName) {
+        try (CSVPrinter writer = new CSVPrinter(new FileWriter(inputTimeBarsFileName, false), CSV_INPUT_TIME_BARS_FORMAT)) {
+            for (Map.Entry<HedgerActor.TimeBarRequest, HedgerActor.TimebarArray> entry : currentBars.entrySet()) {
+                for(HedgerActor.Timebar tb : entry.getValue().getBars()) {
+                    writer.printRecord(
+                            tb.getLocalSymbol(),
+                            tb.getBarTime(),
+                            tb.getDuration(),
+                            tb.getOpen(),
+                            tb.getHigh(),
+                            tb.getLow(),
+                            tb.getClose()
+                    );
+                }
+            }
+        } catch (IOException ex) {
+            throw new RuntimeException(ex);
+        }
+    }
 
     public static void storePositions(Map<String, Position> positionsByLocalSymbol) {
 
@@ -221,4 +309,6 @@ public class StorageUtils {
         }
         return trades;
     }
+
+
 }

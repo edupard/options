@@ -62,5 +62,11 @@
       </TableView>
       <Button layoutX="57.0" layoutY="787.0" mnemonicParsing="false" onAction="#onRefreshOpenOrders" text="Refresh open orders" />
       <CheckBox fx:id="cbIncludeManualOrders" layoutX="209.0" layoutY="791.0" mnemonicParsing="false" text="include manual orders" />
+      <Button layoutX="442.0" layoutY="787.0" mnemonicParsing="false" onAction="#onRunPython" text="Run python" />
+      <Label fx:id="lblPythonLastResult" layoutX="555.0" layoutY="791.0" prefHeight="17.0" prefWidth="158.0" text="LBL_PYTHON_LAST_CALL">
+         <font>
+            <Font name="System Bold" size="12.0" />
+         </font>
+      </Label>
    </children>
 </AnchorPane>

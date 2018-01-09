@@ -7,6 +7,7 @@ import com.skywind.ib.IbGateway;
 import com.skywind.ib.Utils;
 import com.skywind.trading.spring_akka_integration.EmailActor;
 import com.skywind.trading.spring_akka_integration.MessageSentToExactActorInstance;
+import javafx.beans.property.StringProperty;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.beans.factory.config.BeanDefinition;
@@ -17,6 +18,10 @@ import org.slf4j.LoggerFactory;
 import scala.concurrent.duration.Duration;
 
 import javax.annotation.PostConstruct;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.time.Instant;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
@@ -77,6 +82,31 @@ public class HedgerActor extends AbstractActor {
     public static final class RefreshTimebars {
 
     }
+
+    public static final class RunPython {
+
+    }
+
+    public static final class PythonScriptResult extends MessageSentToExactActorInstance {
+
+        public enum Result {
+            SUCCESS,
+            FAILURE,
+            TIMEOUT
+        }
+
+        private final Result result;
+
+        public PythonScriptResult(UUID actorId, Result result) {
+            super(actorId);
+            this.result = result;
+        }
+
+        public Result getResult() {
+            return result;
+        }
+    }
+
 
     public static final class RefreshOpenOrders {
         private final boolean includeManualOrders;
@@ -206,27 +236,34 @@ public class HedgerActor extends AbstractActor {
                         onErrorWithMessage(m);
                     }
                 })
-                .match(IbGateway.OpenOrder.class, m-> {
+                .match(IbGateway.OpenOrder.class, m -> {
                     if (m.isActorInstaceEquals(actorId)) {
                         onOpenOrder(m);
                     }
                 })
-                .match(IbGateway.OpenOrderEnd.class, m-> {
+                .match(IbGateway.OpenOrderEnd.class, m -> {
                     if (m.isActorInstaceEquals(actorId)) {
                         onOpenOrderEnd(m);
                     }
                 })
-                .match(IbGateway.OrderStatus.class, m-> {
+                .match(IbGateway.OrderStatus.class, m -> {
                     if (m.isActorInstaceEquals(actorId)) {
                         onOrderStatus(m);
                     }
                 })
-                .match(RefreshOpenOrders.class, m-> {
+                .match(RefreshOpenOrders.class, m -> {
                     onRefreshOpenOrders(m);
+                })
+                .match(RunPython.class, m -> {
+                    onRunPython(m);
+                })
+                .match(PythonScriptResult.class, m -> {
+                    onPythonScriptResult(m);
                 })
                 .matchAny(m -> recievedUnknown(m))
                 .build();
     }
+
 
 
 
@@ -270,8 +307,7 @@ public class HedgerActor extends AbstractActor {
     }
 
     private void onErrorWithCode(IbGateway.ErrorWithCode m) {
-        if (DISCONNECTED_FROM_IB_ERROR_CODES.contains(m.getErrorCode()))
-        {
+        if (DISCONNECTED_FROM_IB_ERROR_CODES.contains(m.getErrorCode())) {
             if (ibConnection) {
                 ibConnection = false;
                 controller.onIbConnection(ibConnection);
@@ -377,6 +413,71 @@ public class HedgerActor extends AbstractActor {
         requestExecutions();
     }
 
+    @Value("${python.path}")
+    private String pythonPath;
+
+    @Value("${script.folder}")
+    private String scriptFolder;
+
+    private void onPythonScriptResult(PythonScriptResult m) {
+        if (m.getResult() == PythonScriptResult.Result.FAILURE
+                || m.getResult() == PythonScriptResult.Result.TIMEOUT) {
+            String message = String.format("Options: python script %s", m.getResult().toString());
+            emailActorSelection.tell(new EmailActor.Email(message, message), self());
+        }
+        controller.onPythonScriptResult(m);
+    }
+
+    private void onRunPython(RunPython m) {
+        String dataFolderName = UUID.randomUUID().toString();
+        String DATA_FOLDER = String.format("%s\\data\\%s", scriptFolder, dataFolderName);
+        Path path = Paths.get(DATA_FOLDER);
+        if (!Files.exists(path)) {
+            try {
+                Files.createDirectories(path);
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+        }
+
+        try {
+            String inputPositionsFileName = String.format("%s\\positions.csv", DATA_FOLDER);
+            StorageUtils.prepareInputPositions(positions, inputPositionsFileName);
+            String inputTimeBarsFileName = String.format("%s\\time_bars.csv", DATA_FOLDER);
+            StorageUtils.prepareInputBars(currentBars, inputTimeBarsFileName);
+        }
+        catch (Throwable t) {
+            LOGGER.error("", t);
+            self().tell(new PythonScriptResult(actorId,PythonScriptResult.Result.FAILURE), self());
+            return;
+        }
+
+        String pythonScript = String.format("%s\\delta-hedger.py", scriptFolder);
+        ProcessBuilder processBuilder = new ProcessBuilder(pythonPath, pythonScript, dataFolderName);
+        try {
+            Process process = processBuilder.start();
+            Thread waitThread = new Thread(() -> {
+                try {
+                    if (process.waitFor(10l, TimeUnit.SECONDS)) {
+                        int exitCode = process.exitValue();
+                        self().tell(new PythonScriptResult(actorId, exitCode == 0 ? PythonScriptResult.Result.SUCCESS : PythonScriptResult.Result.FAILURE), self());
+                    } else {
+                        self().tell(new PythonScriptResult(actorId, PythonScriptResult.Result.TIMEOUT), self());
+                    }
+                } catch (Throwable t) {
+                    LOGGER.error("", t);
+                    self().tell(new PythonScriptResult(actorId, PythonScriptResult.Result.FAILURE), self());
+                }
+            });
+            waitThread.setDaemon(true);
+            waitThread.start();
+        } catch (Throwable t) {
+            LOGGER.error("", t);
+            self().tell(new PythonScriptResult(actorId, PythonScriptResult.Result.FAILURE), self());
+        }
+
+    }
+
     private boolean includeManualOrders = false;
 
     private void onRefreshOpenOrders(RefreshOpenOrders m) {
@@ -431,7 +532,8 @@ public class HedgerActor extends AbstractActor {
                 orderSide,
                 orderState,
                 qty,
-                px);
+                px,
+                PriceUtils.convertPrice(px, futPriceCoeff));
         if (!openOrders.containsKey(orderId)) {
             openOrders.put(orderId, ho);
         }
@@ -447,7 +549,7 @@ public class HedgerActor extends AbstractActor {
         if (!includeManualOrders && m.getOrderId() < 0) {
             return;
         }
-        if (openOrders.containsKey(m.getOrderId())){
+        if (openOrders.containsKey(m.getOrderId())) {
             HedgerOrder ho = openOrders.get(m.getOrderId());
             OrderStatus orderStatus = OrderStatus.get(m.getStatus());
             switch (orderStatus) {
@@ -542,20 +644,40 @@ public class HedgerActor extends AbstractActor {
         private final String duration;
         private final String barTime;
         private final double open;
+        private final String openView;
         private final double high;
+        private final String highView;
         private final double low;
+        private final String lowView;
         private final double close;
+        private final String closeView;
         private final double volume;
         private final Instant lut;
 
-        public Timebar(String localSymbol, String duration, String barTime, double open, double high, double low, double close, double volume, Instant lut) {
+        public Timebar(String localSymbol,
+                       String duration,
+                       String barTime,
+                       double open,
+                       String openView,
+                       double high,
+                       String highView,
+                       double low,
+                       String lowView,
+                       double close,
+                       String closeView,
+                       double volume,
+                       Instant lut) {
             this.localSymbol = localSymbol;
             this.duration = duration;
             this.barTime = barTime;
             this.open = open;
+            this.openView = openView;
             this.high = high;
+            this.highView = highView;
             this.low = low;
+            this.lowView = lowView;
             this.close = close;
+            this.closeView = closeView;
             this.volume = volume;
             this.lut = lut;
         }
@@ -582,6 +704,22 @@ public class HedgerActor extends AbstractActor {
 
         public double getClose() {
             return close;
+        }
+
+        public String getOpenView() {
+            return openView;
+        }
+
+        public String getHighView() {
+            return highView;
+        }
+
+        public String getLowView() {
+            return lowView;
+        }
+
+        public String getCloseView() {
+            return closeView;
         }
 
         public double getVolume() {
@@ -618,6 +756,10 @@ public class HedgerActor extends AbstractActor {
 
         public void onTimeBar(Timebar tb) {
             bars.add(tb);
+        }
+
+        public List<Timebar> getBars() {
+            return bars;
         }
     }
 
@@ -664,6 +806,9 @@ public class HedgerActor extends AbstractActor {
         onTimeBar(m.getReqId(), m.getBar());
     }
 
+    @Value("${fut.price.coeff}")
+    private double futPriceCoeff;
+
     private void onTimeBar(int reqId, Bar bar) {
         if (timeBarsRequestMap.containsKey(reqId)) {
             TimeBarRequest r = timeBarsRequestMap.get(reqId);
@@ -675,9 +820,13 @@ public class HedgerActor extends AbstractActor {
                     r.duration,
                     bar.time(),
                     bar.open(),
+                    PriceUtils.convertPrice(bar.open(), futPriceCoeff),
                     bar.high(),
+                    PriceUtils.convertPrice(bar.high(), futPriceCoeff),
                     bar.low(),
+                    PriceUtils.convertPrice(bar.low(), futPriceCoeff),
                     bar.close(),
+                    PriceUtils.convertPrice(bar.close(), futPriceCoeff),
                     bar.volume(),
                     Instant.now()
             );
@@ -688,8 +837,7 @@ public class HedgerActor extends AbstractActor {
             }
             arr.onTimeBar(tb);
             controller.onTimeBar(tb);
-        }
-        else {
+        } else {
             ibGateway.getClientSocket().cancelHistoricalData(reqId);
         }
     }

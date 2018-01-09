@@ -19,6 +19,10 @@ public class HedgerOrder {
         return px;
     }
 
+    public String getViewPx() {
+        return viewPx;
+    }
+
     public double getQty() {
         return outstandingQty;
     }
@@ -42,8 +46,9 @@ public class HedgerOrder {
     private double outstandingQty;
     private double remainingQty;
     private double px;
+    private String viewPx;
 
-    public HedgerOrder(String code, int orderId, Side side, State state, double outstandingQty, double px) {
+    public HedgerOrder(String code, int orderId, Side side, State state, double outstandingQty, double px, String viewPx) {
         this.code = code;
         this.orderId = orderId;
         this.side = side;
@@ -51,6 +56,7 @@ public class HedgerOrder {
         this.outstandingQty = outstandingQty;
         this.remainingQty = outstandingQty;
         this.px = px;
+        this.viewPx = viewPx;
     }
 
     public HedgerOrder(HedgerOrder other) {

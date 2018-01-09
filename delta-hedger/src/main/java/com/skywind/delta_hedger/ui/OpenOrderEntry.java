@@ -8,14 +8,14 @@ public class OpenOrderEntry {
     private final IntegerProperty orderId;
     private final StringProperty code;
     private final StringProperty side;
-    private final DoubleProperty px;
+    private final StringProperty px;
     private final DoubleProperty qty;
 
     public OpenOrderEntry() {
         this.orderId = new SimpleIntegerProperty();
         this.code = new SimpleStringProperty();
         this.side = new SimpleStringProperty();
-        this.px = new SimpleDoubleProperty();
+        this.px = new SimpleStringProperty();
         this.qty = new SimpleDoubleProperty();
     }
 
@@ -23,7 +23,7 @@ public class OpenOrderEntry {
         orderId.set(ho.getOrderId());
         code.set(ho.getCode());
         side.set(ho.getSide().toString());
-        px.set(ho.getPx());
+        px.set(ho.getViewPx());
         qty.set(ho.getQty());
     }
 
@@ -39,7 +39,7 @@ public class OpenOrderEntry {
         return side;
     }
 
-    public DoubleProperty pxProperty() {
+    public StringProperty pxProperty() {
         return px;
     }
 
