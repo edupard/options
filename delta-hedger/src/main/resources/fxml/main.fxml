@@ -8,10 +8,10 @@
 <?import javafx.scene.control.*?>
 <?import javafx.scene.layout.*?>
 
-<AnchorPane fx:id="anchor" prefHeight="838.0" prefWidth="1067.0" xmlns="http://javafx.com/javafx/8" xmlns:fx="http://javafx.com/fxml/1" fx:controller="com.skywind.delta_hedger.ui.MainController">
+<AnchorPane fx:id="anchor" prefHeight="881.0" prefWidth="1208.0" xmlns="http://javafx.com/javafx/8" xmlns:fx="http://javafx.com/fxml/1" fx:controller="com.skywind.delta_hedger.ui.MainController">
    <children>
       <Button layoutX="57.0" layoutY="270.0" mnemonicParsing="false" onAction="#onReloadPositions" text="Reload positions" />
-      <TableView fx:id="tblPositions" editable="true" layoutX="57.0" layoutY="56.0" prefHeight="200.0" prefWidth="974.0">
+      <TableView fx:id="tblPositions" editable="true" layoutX="57.0" layoutY="56.0" prefHeight="200.0" prefWidth="1087.0">
         <columns>
             <TableColumn fx:id="colSelected" prefWidth="60.0" text="selected" />
           <TableColumn fx:id="colCode" prefWidth="136.0" text="code" />
@@ -21,6 +21,7 @@
             <TableColumn fx:id="colStrike" prefWidth="84.0" text="strike" />
             <TableColumn fx:id="colSecType" prefWidth="47.0" text="c / p" />
             <TableColumn fx:id="colPos" prefWidth="79.0" text="pos" />
+            <TableColumn fx:id="colPosPx" prefWidth="107.0" text="pos px" />
             <TableColumn fx:id="colIr" prefWidth="61.0" text="ir" />
             <TableColumn fx:id="colVol" prefWidth="59.0" text="vol" />
             <TableColumn fx:id="colLastPos" prefWidth="59.0" text="last pos" />
@@ -28,17 +29,17 @@
         </columns>
       </TableView>
       <Button layoutX="57.0" layoutY="531.0" mnemonicParsing="false" onAction="#onRefreshTimebars" text="Refresh timebars" />
-      <TableView fx:id="tblTimeBars" editable="true" layoutX="57.0" layoutY="312.0" prefHeight="200.0" prefWidth="974.0">
+      <TableView fx:id="tblTimeBars" editable="true" layoutX="57.0" layoutY="312.0" prefHeight="200.0" prefWidth="1087.0">
          <columns>
             <TableColumn fx:id="colTbCode" prefWidth="136.0" text="code" />
-            <TableColumn fx:id="colTbDuration" minWidth="2.0" prefWidth="73.0" text="duration" />
-            <TableColumn fx:id="colTbBarTime" prefWidth="118.0" text="time" />
-            <TableColumn fx:id="colTbOpen" prefWidth="98.0" text="open" />
-            <TableColumn fx:id="colTbHigh" prefWidth="89.0" text="high" />
-            <TableColumn fx:id="colTbLow" minWidth="5.0" prefWidth="88.0" text="low" />
-            <TableColumn fx:id="colTbClose" prefWidth="96.0" text="close" />
-            <TableColumn fx:id="colTbVolume" prefWidth="120.0" text="volume" />
-            <TableColumn fx:id="colTbLut" prefWidth="151.0" text="lut" />
+            <TableColumn fx:id="colTbDuration" minWidth="2.0" prefWidth="91.0" text="duration" />
+            <TableColumn fx:id="colTbBarTime" prefWidth="127.0" text="time" />
+            <TableColumn fx:id="colTbOpen" prefWidth="92.0" text="open" />
+            <TableColumn fx:id="colTbHigh" prefWidth="95.0" text="high" />
+            <TableColumn fx:id="colTbLow" minWidth="5.0" prefWidth="85.0" text="low" />
+            <TableColumn fx:id="colTbClose" prefWidth="98.0" text="close" />
+            <TableColumn fx:id="colTbVolume" prefWidth="116.0" text="volume" />
+            <TableColumn fx:id="colTbLut" prefWidth="242.0" text="lut" />
          </columns>
       </TableView>
       <Label fx:id="lblApiConnection" layoutX="65.0" layoutY="23.0" text="api">
@@ -62,11 +63,12 @@
       </TableView>
       <Button layoutX="57.0" layoutY="787.0" mnemonicParsing="false" onAction="#onRefreshOpenOrders" text="Refresh open orders" />
       <CheckBox fx:id="cbIncludeManualOrders" layoutX="209.0" layoutY="791.0" mnemonicParsing="false" text="include manual orders" />
-      <Button layoutX="442.0" layoutY="787.0" mnemonicParsing="false" onAction="#onRunPython" text="Run python" />
-      <Label fx:id="lblPythonLastResult" layoutX="555.0" layoutY="791.0" prefHeight="17.0" prefWidth="158.0" text="LBL_PYTHON_LAST_CALL">
+      <Button layoutX="184.0" layoutY="835.0" mnemonicParsing="false" onAction="#onRunPython" text="Run python" />
+      <Label fx:id="lblPythonLastResult" layoutX="280.0" layoutY="839.0" prefHeight="17.0" prefWidth="158.0" text="LBL_PYTHON_LAST_CALL">
          <font>
             <Font name="System Bold" size="12.0" />
          </font>
       </Label>
+      <Button layoutX="57.0" layoutY="835.0" mnemonicParsing="false" onAction="#onShowPortfolio" text="Show portfolio" />
    </children>
 </AnchorPane>

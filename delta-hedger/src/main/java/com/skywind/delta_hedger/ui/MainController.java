@@ -22,7 +22,6 @@ import javafx.beans.value.ChangeListener;
 import javafx.scene.paint.Color;
 import javafx.util.StringConverter;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.ConfigurableApplicationContext;
 
@@ -67,6 +66,8 @@ public class MainController {
     private TableColumn<PositionEntry, String> colSecType;
     @FXML
     private TableColumn<PositionEntry, Double> colPos;
+    @FXML
+    private TableColumn<PositionEntry, Double> colPosPx;
     @FXML
     private TableColumn<PositionEntry, Double> colIr;
     @FXML
@@ -276,6 +277,9 @@ public class MainController {
         colPos.setCellValueFactory(cellData -> cellData.getValue().posProperty().asObject());
         colPos.setCellFactory(new FormatedCellFactory<>("%.0f"));
 
+        colPosPx.setCellValueFactory(cellData -> cellData.getValue().posPxProperty().asObject());
+        colPos.setCellFactory(new FormatedCellFactory<>("%.5f"));
+
         colIr.setCellValueFactory(cellData -> {
             PositionEntry pe = cellData.getValue();
             pe.irProperty().addListener(new ChangeListener() {
@@ -401,6 +405,11 @@ public class MainController {
         lblPythonLastResult.setText("Running...");
         lblPythonLastResult.setTextFill(Color.BLUE);
         hedgerActor.tell(new HedgerActor.RunPython(), null);
+    }
+
+    @FXML
+    public void onShowPortfolio() {
+        hedgerActor.tell(new HedgerActor.ShowPortfolio(), null);
     }
 
     public void onPythonScriptResult(HedgerActor.PythonScriptResult m) {

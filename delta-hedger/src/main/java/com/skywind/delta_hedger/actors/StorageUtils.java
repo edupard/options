@@ -103,6 +103,7 @@ public class StorageUtils {
                     COLUMN_RIGHT,
                     COLUMN_MULTIPLIER,
                     COLUMN_POSITION,
+                    COLUMN_PRICE,
                     COLUMN_IR,
                     COLUMN_VOL
             );
@@ -126,6 +127,7 @@ public class StorageUtils {
                         pi.getContract().right(),
                         pi.getContract().multiplier(),
                         pi.getPos(),
+                        pi.getPosPx(),
                         pi.getIr(),
                         pi.getVol()
                 );
@@ -154,12 +156,13 @@ public class StorageUtils {
                 for(HedgerActor.Timebar tb : entry.getValue().getBars()) {
                     writer.printRecord(
                             tb.getLocalSymbol(),
-                            tb.getBarTime(),
+                            TIME_FMT.format(tb.getBarTime()),
                             tb.getDuration(),
                             tb.getOpen(),
                             tb.getHigh(),
                             tb.getLow(),
-                            tb.getClose()
+                            tb.getClose(),
+                            tb.getVolume()
                     );
                 }
             }

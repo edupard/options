@@ -20,6 +20,7 @@ public class PositionEntry {
     private final DoubleProperty strike;
     private final StringProperty secType;
     private final DoubleProperty pos;
+    private final DoubleProperty posPx;
     private final DoubleProperty ir;
     private final DoubleProperty vol;
 
@@ -35,6 +36,7 @@ public class PositionEntry {
         this.strike = new SimpleDoubleProperty();
         this.secType = new SimpleStringProperty();
         this.pos = new SimpleDoubleProperty();
+        this.posPx = new SimpleDoubleProperty();
         this.ir = new SimpleDoubleProperty();
         this.vol = new SimpleDoubleProperty();
         this.lastPos = new SimpleStringProperty();
@@ -71,6 +73,7 @@ public class PositionEntry {
         // how to propogate to script
         secType.set(Utils.getSecType(p.getContract()));
         pos.set(p.getPos());
+        posPx.set(p.getPosPx());
         ir.set(p.getIr());
         vol.set(p.getVol());
 
@@ -110,6 +113,10 @@ public class PositionEntry {
 
     public DoubleProperty posProperty() {
         return pos;
+    }
+
+    public DoubleProperty posPxProperty() {
+        return posPx;
     }
 
     public DoubleProperty irProperty() {

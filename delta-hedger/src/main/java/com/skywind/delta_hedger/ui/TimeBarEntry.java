@@ -1,13 +1,10 @@
 package com.skywind.delta_hedger.ui;
 
 import com.skywind.delta_hedger.actors.HedgerActor;
-import com.skywind.delta_hedger.actors.Position;
-import javafx.beans.binding.BooleanExpression;
 import javafx.beans.property.DoubleProperty;
 import javafx.beans.property.SimpleDoubleProperty;
 import javafx.beans.property.SimpleStringProperty;
 import javafx.beans.property.StringProperty;
-import javafx.beans.value.ObservableValue;
 
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
@@ -36,15 +33,20 @@ public class TimeBarEntry {
         this.lut = new SimpleStringProperty();
     }
 
-    private static final DateTimeFormatter FMT = new DateTimeFormatterBuilder()
+    private static final DateTimeFormatter LUT_FMT = new DateTimeFormatterBuilder()
             .appendPattern("HH:mm:ss")
+            .toFormatter()
+            .withZone(ZoneId.systemDefault());
+
+    private static final DateTimeFormatter BAR_TIME_FMT = new DateTimeFormatterBuilder()
+            .appendPattern("yyyy-MM-dd HH:mm")
             .toFormatter()
             .withZone(ZoneId.systemDefault());
 
     public void updateUi(HedgerActor.Timebar tb) {
         localSymbol.set(tb.getLocalSymbol());
         duration.set(tb.getDuration());
-        barTime.set(tb.getBarTime());
+        barTime.set(BAR_TIME_FMT.format(tb.getBarTime()));
 
         open.set(tb.getOpenView());
         high.set(tb.getHighView());
@@ -52,7 +54,7 @@ public class TimeBarEntry {
         close.set(tb.getCloseView());
 
         volume.set(tb.getVolume());
-        lut.set(FMT.format(tb.getLut()));
+        lut.set(LUT_FMT.format(tb.getLut()));
     }
 
     public StringProperty localSymbolProperty() {

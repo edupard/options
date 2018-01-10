@@ -7,7 +7,6 @@ import com.skywind.ib.IbGateway;
 import com.skywind.ib.Utils;
 import com.skywind.trading.spring_akka_integration.EmailActor;
 import com.skywind.trading.spring_akka_integration.MessageSentToExactActorInstance;
-import javafx.beans.property.StringProperty;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.beans.factory.config.BeanDefinition;
@@ -19,10 +18,14 @@ import scala.concurrent.duration.Duration;
 
 import javax.annotation.PostConstruct;
 import java.io.IOException;
+import java.io.PrintWriter;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.Instant;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeFormatterBuilder;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
@@ -80,6 +83,10 @@ public class HedgerActor extends AbstractActor {
     }
 
     public static final class RefreshTimebars {
+
+    }
+
+    public static final class ShowPortfolio {
 
     }
 
@@ -257,6 +264,9 @@ public class HedgerActor extends AbstractActor {
                 .match(RunPython.class, m -> {
                     onRunPython(m);
                 })
+                .match(ShowPortfolio.class, m -> {
+                    onShowPortfolio(m);
+                })
                 .match(PythonScriptResult.class, m -> {
                     onPythonScriptResult(m);
                 })
@@ -428,32 +438,64 @@ public class HedgerActor extends AbstractActor {
         controller.onPythonScriptResult(m);
     }
 
-    private void onRunPython(RunPython m) {
-        String dataFolderName = UUID.randomUUID().toString();
-        String DATA_FOLDER = String.format("%s\\data\\%s", scriptFolder, dataFolderName);
-        Path path = Paths.get(DATA_FOLDER);
+    private static final DateTimeFormatter RUN_TIME_FMT = new DateTimeFormatterBuilder()
+            .appendPattern("yyyy-MM-dd HH:mm")
+            .toFormatter()
+            .withZone(ZoneId.systemDefault());
+
+    private static final DateTimeFormatter RUN_TIME_FILE_NAME_FMT = new DateTimeFormatterBuilder()
+            .appendPattern("yyyyMMdd_HHmmss.SSS")
+            .toFormatter()
+            .withZone(ZoneId.systemDefault());
+
+    private void prepareScriptData(String dataFolder, String dataFolderName, String sRunTime) throws IOException {
+        Path path = Paths.get(dataFolder);
         if (!Files.exists(path)) {
-            try {
-                Files.createDirectories(path);
-            } catch (IOException e) {
-                throw new RuntimeException(e);
-            }
+            Files.createDirectories(path);
         }
 
+        String inputPositionsFileName = String.format("%s\\positions.csv", dataFolder);
+        StorageUtils.prepareInputPositions(positions, inputPositionsFileName);
+        String inputTimeBarsFileName = String.format("%s\\time_bars.csv", dataFolder);
+        StorageUtils.prepareInputBars(currentBars, inputTimeBarsFileName);
+        String comandLineParametersFileName = String.format("%s\\command_line.txt", dataFolder);
+        try (PrintWriter out = new PrintWriter(comandLineParametersFileName)) {
+            out.println(String.format("\"%s\" \"%s\"", dataFolderName, sRunTime));
+        }
+    }
+
+    private void onShowPortfolio(ShowPortfolio m) {
+        Instant runTime = Instant.now();
+        String sRunTime = RUN_TIME_FMT.format(runTime);
+        String dataFolderName = "profile_data";
+        String DATA_FOLDER = String.format("%s\\data\\%s", scriptFolder, dataFolderName);
         try {
-            String inputPositionsFileName = String.format("%s\\positions.csv", DATA_FOLDER);
-            StorageUtils.prepareInputPositions(positions, inputPositionsFileName);
-            String inputTimeBarsFileName = String.format("%s\\time_bars.csv", DATA_FOLDER);
-            StorageUtils.prepareInputBars(currentBars, inputTimeBarsFileName);
+            prepareScriptData(DATA_FOLDER, dataFolderName, sRunTime);
+            String pythonScript = String.format("%s\\portfolio.py", scriptFolder);
+            ProcessBuilder processBuilder = new ProcessBuilder(pythonPath, pythonScript, dataFolderName, sRunTime);
+            processBuilder.start();
+        } catch (Throwable t) {
+            LOGGER.debug("", t);
+        }
+    }
+
+    private void onRunPython(RunPython m) {
+        Instant runTime = Instant.now();
+        String sRunTime = RUN_TIME_FMT.format(runTime);
+        String dataFolderName = RUN_TIME_FILE_NAME_FMT.format(runTime);
+        String DATA_FOLDER = String.format("%s\\data\\%s", scriptFolder, dataFolderName);
+
+        try {
+            prepareScriptData(DATA_FOLDER, dataFolderName, sRunTime);
         }
         catch (Throwable t) {
             LOGGER.error("", t);
-            self().tell(new PythonScriptResult(actorId,PythonScriptResult.Result.FAILURE), self());
+            self().tell(new PythonScriptResult(actorId, PythonScriptResult.Result.FAILURE), self());
             return;
         }
 
         String pythonScript = String.format("%s\\delta-hedger.py", scriptFolder);
-        ProcessBuilder processBuilder = new ProcessBuilder(pythonPath, pythonScript, dataFolderName);
+        ProcessBuilder processBuilder = new ProcessBuilder(pythonPath, pythonScript, dataFolderName, sRunTime);
         try {
             Process process = processBuilder.start();
             Thread waitThread = new Thread(() -> {
@@ -475,7 +517,6 @@ public class HedgerActor extends AbstractActor {
             LOGGER.error("", t);
             self().tell(new PythonScriptResult(actorId, PythonScriptResult.Result.FAILURE), self());
         }
-
     }
 
     private boolean includeManualOrders = false;
@@ -642,7 +683,7 @@ public class HedgerActor extends AbstractActor {
     public static final class Timebar {
         private final String localSymbol;
         private final String duration;
-        private final String barTime;
+        private final Instant barTime;
         private final double open;
         private final String openView;
         private final double high;
@@ -656,7 +697,7 @@ public class HedgerActor extends AbstractActor {
 
         public Timebar(String localSymbol,
                        String duration,
-                       String barTime,
+                       Instant barTime,
                        double open,
                        String openView,
                        double high,
@@ -686,7 +727,7 @@ public class HedgerActor extends AbstractActor {
             return localSymbol;
         }
 
-        public String getBarTime() {
+        public Instant getBarTime() {
             return barTime;
         }
 
@@ -752,13 +793,14 @@ public class HedgerActor extends AbstractActor {
     }
 
     public static final class TimebarArray {
-        private final List<Timebar> bars = new LinkedList<>();
+        private final Set<Timebar> bars = new HashSet<>();
 
         public void onTimeBar(Timebar tb) {
+            bars.remove(tb);
             bars.add(tb);
         }
 
-        public List<Timebar> getBars() {
+        public Collection<Timebar> getBars() {
             return bars;
         }
     }
@@ -809,6 +851,11 @@ public class HedgerActor extends AbstractActor {
     @Value("${fut.price.coeff}")
     private double futPriceCoeff;
 
+    private static final DateTimeFormatter BAR_TIME_FMT = new DateTimeFormatterBuilder()
+            .appendPattern("yyyyMMdd  HH:mm:ss")
+            .toFormatter()
+            .withZone(ZoneId.systemDefault());
+
     private void onTimeBar(int reqId, Bar bar) {
         if (timeBarsRequestMap.containsKey(reqId)) {
             TimeBarRequest r = timeBarsRequestMap.get(reqId);
@@ -818,7 +865,7 @@ public class HedgerActor extends AbstractActor {
             Timebar tb = new Timebar(
                     r.localSymbol,
                     r.duration,
-                    bar.time(),
+                    BAR_TIME_FMT.parse(bar.time(), Instant::from),
                     bar.open(),
                     PriceUtils.convertPrice(bar.open(), futPriceCoeff),
                     bar.high(),
@@ -954,7 +1001,7 @@ public class HedgerActor extends AbstractActor {
                         ir = oldPosition.getIr();
                         lastTrade = oldPosition.getLastTrade();
                     }
-                    Position p = new Position(c, pm.getPosition(), pm.getPositionPrice(), vol, ir, lastTrade);
+                    Position p = new Position(c, pm.getPosition(), pm.getPositionPrice() / Double.parseDouble(pm.getContract().multiplier()), vol, ir, lastTrade);
                     positions.put(localSymbol, p);
                     uiUpdates.addAction(MainController.UpdateUiPositionsBatch.Action.UPDATE, localSymbol, p);
                 }
