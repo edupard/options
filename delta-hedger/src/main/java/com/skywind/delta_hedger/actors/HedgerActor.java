@@ -93,13 +93,19 @@ public class HedgerActor extends AbstractActor {
     public static final class RunAmendmentProcess {
 
         private final String params;
+        private final boolean confirmPlaceOrders;
 
         public String getParams() {
             return params;
         }
 
-        public RunAmendmentProcess(String params) {
+        public RunAmendmentProcess(String params, boolean confirmPlaceOrders) {
             this.params = params;
+            this.confirmPlaceOrders = confirmPlaceOrders;
+        }
+
+        public boolean isConfirmPlaceOrders() {
+            return confirmPlaceOrders;
         }
     }
 
@@ -161,6 +167,18 @@ public class HedgerActor extends AbstractActor {
             super(actorId);
         }
 
+    }
+
+    public static final class PlaceConfirmation {
+        private final boolean proceed;
+
+        public PlaceConfirmation(boolean proceed) {
+            this.proceed = proceed;
+        }
+
+        public boolean isProceed() {
+            return proceed;
+        }
     }
 
 
@@ -276,6 +294,9 @@ public class HedgerActor extends AbstractActor {
                 })
                 .match(PythonScriptResult.class, m -> {
                     onPythonScriptResult(m);
+                })
+                .match(PlaceConfirmation.class, m-> {
+                    onPlaceConfirmation(m);
                 })
                 .matchAny(m -> recievedUnknown(m))
                 .build();
@@ -443,31 +464,58 @@ public class HedgerActor extends AbstractActor {
 
     private AmendmentProcess amendmentProcess = null;
 
+    private void onPlaceConfirmation(PlaceConfirmation m) {
+        if (amendmentProcess != null) {
+            if (amendmentProcess.getCurrentStage() == AmendmentProcess.Stage.WAITING_PLACE_CONFIRMATION) {
+                amendmentProcess.setCurrentStage(AmendmentProcess.Stage.PLACE_ORDERS);
+                controller.onProgress(amendmentProcess.getCurrentStage());
+                doNextAmendmentProcessStage();
+            }
+        }
+    }
+
     private void doNextAmendmentProcessStage() {
         if (amendmentProcess == null) {
             return;
         }
-        if (amendmentProcess.getCurrentStage() == AmendmentProcess.Stage.CANCELLED
-                || amendmentProcess.getCurrentStage() == AmendmentProcess.Stage.COMPLETED) {
+        try {
+            if (amendmentProcess.getCurrentStage() == AmendmentProcess.Stage.CANCELLED
+                    || amendmentProcess.getCurrentStage() == AmendmentProcess.Stage.COMPLETED) {
+                return;
+            }
+            switch (amendmentProcess.getCurrentStage()) {
+                case CANCEL_ORDERS:
+                    if (openOrders.isEmpty()) {
+                        if (amendmentProcess.isCallPyScript()) {
+                            amendmentProcess.setCurrentStage(AmendmentProcess.Stage.CALL_PY_SCRIPT);
+                        } else if (amendmentProcess.isConfirmPlaceOrders()) {
+                            controller.onConfirmOrderPlace();
+                            amendmentProcess.setCurrentStage(AmendmentProcess.Stage.WAITING_PLACE_CONFIRMATION);
+                        } else if (amendmentProcess.isPlaceOrders()) {
+                            amendmentProcess.setCurrentStage(AmendmentProcess.Stage.PLACE_ORDERS);
+                        } else {
+                            amendmentProcess.setCurrentStage(AmendmentProcess.Stage.COMPLETED);
+                        }
+                        doNextAmendmentProcessStage();
+
+                    } else {
+                        cancelAllOrders();
+                        amendmentProcess.setCurrentStage(AmendmentProcess.Stage.WAIT_ALL_ORDERS_CANCELLED);
+                    }
+                    break;
+                case CALL_PY_SCRIPT:
+                    runPython();
+                    amendmentProcess.setCurrentStage(AmendmentProcess.Stage.WAIT_PY_SCRIPT_COMPLETION);
+                    break;
+                case PLACE_ORDERS:
+                    placeTargetOrders();
+                    amendmentProcess.setCurrentStage(AmendmentProcess.Stage.COMPLETED);
+                    break;
+            }
+        } finally {
             controller.onProgress(amendmentProcess.getCurrentStage());
-            return;
         }
-        switch (amendmentProcess.getCurrentStage()) {
-            case CANCEL_ORDERS:
-                cancelAllOrders();
-                getOpenOrders();
-                amendmentProcess.setCurrentStage(AmendmentProcess.Stage.WAIT_ALL_ORDERS_CANCELLED);
-                break;
-            case CALL_PY_SCRIPT:
-                runPython();
-                amendmentProcess.setCurrentStage(AmendmentProcess.Stage.WAIT_PY_SCRIPT_COMPLETION);
-                break;
-            case PLACE_ORDERS:
-                placeTargetOrders();
-                amendmentProcess.setCurrentStage(AmendmentProcess.Stage.COMPLETED);
-                break;
-        }
-        controller.onProgress(amendmentProcess.getCurrentStage());
+
     }
 
     private void cancelAllOrders() {
@@ -485,7 +533,7 @@ public class HedgerActor extends AbstractActor {
             TimebarArray timebarArray = currentBars.get(r);
             double currentPx = timebarArray.getLastPx();
             // TODO: what if price absent
-            List<TargetOrder> sortedOrders = targetOrders.stream().filter((to) -> to.getCode().equals(code)).sorted(Comparator.comparing((to)-> Math.abs(to.getPx() - currentPx))).collect(Collectors.toList());
+            List<TargetOrder> sortedOrders = targetOrders.stream().filter((to) -> to.getCode().equals(code)).sorted(Comparator.comparing((to) -> Math.abs(to.getPx() - currentPx))).collect(Collectors.toList());
             for (TargetOrder to : sortedOrders) {
                 amendmentProcess.placeOrder(placeTargetOrder(to));
             }
@@ -501,7 +549,7 @@ public class HedgerActor extends AbstractActor {
         return contract;
     }
 
-    private int placeTargetOrder (TargetOrder to) {
+    private int placeTargetOrder(TargetOrder to) {
         Contract contract = getContract(to.getCode());
         OrderType ot = OrderType.STP;
         switch (to.getOrderType()) {
@@ -535,7 +583,7 @@ public class HedgerActor extends AbstractActor {
     private void onPythonScriptResult(PythonScriptResult m) {
         if (m.getResult() == PythonScriptResult.Result.FAILURE
                 || m.getResult() == PythonScriptResult.Result.TIMEOUT) {
-            String message = String.format("Options: python script %s", m.getResult().toString());
+            String message = String.format("Options: python script %s %s", m.getResult().toString(), m.getFolder());
             emailActorSelection.tell(new EmailActor.Email(message, message), self());
             if (amendmentProcess != null) {
                 if (amendmentProcess.getCurrentStage() == AmendmentProcess.Stage.WAIT_PY_SCRIPT_COMPLETION) {
@@ -543,15 +591,16 @@ public class HedgerActor extends AbstractActor {
                 }
             }
             targetOrders = new LinkedList<>();
-        }
-        else {
+        } else {
             targetOrders = StorageUtils.readTargetOrders(m.getFolder());
             if (amendmentProcess != null) {
                 if (amendmentProcess.getCurrentStage() == AmendmentProcess.Stage.WAIT_PY_SCRIPT_COMPLETION) {
-                    if (amendmentProcess.isPlaceOrders()) {
+                    if (amendmentProcess.isConfirmPlaceOrders()) {
+                        controller.onConfirmOrderPlace();
+                        amendmentProcess.setCurrentStage(AmendmentProcess.Stage.WAITING_PLACE_CONFIRMATION);
+                    } else if (amendmentProcess.isPlaceOrders()) {
                         amendmentProcess.setCurrentStage(AmendmentProcess.Stage.PLACE_ORDERS);
-                    }
-                    else {
+                    } else {
                         amendmentProcess.setCurrentStage(AmendmentProcess.Stage.COMPLETED);
                     }
                 }
@@ -613,8 +662,7 @@ public class HedgerActor extends AbstractActor {
 
         try {
             prepareScriptData(DATA_FOLDER, dataFolderName, sRunTime, amendmentProcess.getCommand().getParams());
-        }
-        catch (Throwable t) {
+        } catch (Throwable t) {
             LOGGER.error("", t);
             self().tell(new PythonScriptResult(actorId, PythonScriptResult.Result.FAILURE, DATA_FOLDER), self());
             return;
@@ -646,7 +694,7 @@ public class HedgerActor extends AbstractActor {
     }
 
     private void onRunAmendmentProcess(RunAmendmentProcess m) {
-        amendmentProcess = new AmendmentProcess(m, controller.isCancelOrders(), controller.isRunPython(), controller.isPlaceOrders());
+        amendmentProcess = new AmendmentProcess(m, controller.isCancelOrders(), controller.isRunPython(), controller.isPlaceOrders(), m.isConfirmPlaceOrders());
         doNextAmendmentProcessStage();
     }
 
@@ -734,6 +782,8 @@ public class HedgerActor extends AbstractActor {
                         String message = "Options: order rejected";
                         emailActorSelection.tell(new EmailActor.Email(message, message), self());
                     }
+                    amendmentProcess.setCurrentStage(AmendmentProcess.Stage.FAILED);
+                    controller.onProgress(amendmentProcess.getCurrentStage());
                 }
                 if (amendmentProcess.isCancelledOrder(m.getOrderId())) {
                     if (orderStatus == OrderStatus.Cancelled) {
@@ -742,6 +792,9 @@ public class HedgerActor extends AbstractActor {
                             if (amendmentProcess.getCurrentStage() == AmendmentProcess.Stage.WAIT_ALL_ORDERS_CANCELLED) {
                                 if (amendmentProcess.isCallPyScript()) {
                                     amendmentProcess.setCurrentStage(AmendmentProcess.Stage.CALL_PY_SCRIPT);
+                                } else if (amendmentProcess.isConfirmPlaceOrders()) {
+                                    controller.onConfirmOrderPlace();
+                                    amendmentProcess.setCurrentStage(AmendmentProcess.Stage.WAITING_PLACE_CONFIRMATION);
                                 } else if (amendmentProcess.isPlaceOrders()) {
                                     amendmentProcess.setCurrentStage(AmendmentProcess.Stage.PLACE_ORDERS);
                                 } else {
@@ -775,9 +828,8 @@ public class HedgerActor extends AbstractActor {
                     openOrders.remove(m.getOrderId());
                 }
             }
-        }
-        finally {
-            List<HedgerOrder> oo = openOrders.values().stream().map((ho)->new HedgerOrder(ho)).collect(Collectors.toList());
+        } finally {
+            List<HedgerOrder> oo = openOrders.values().stream().map((ho) -> new HedgerOrder(ho)).collect(Collectors.toList());
             controller.onOpenOrders(oo);
         }
     }
@@ -823,26 +875,30 @@ public class HedgerActor extends AbstractActor {
                     m.getExecution().execId(),
                     m.getExecution().time()
             );
-            if (positions.containsKey(localSymbol)) {
-                p = positions.get(localSymbol);
-                p.updatePosition(m);
-                p.setLastTrade(trade);
-            } else {
-                Contract c = m.getContract();
-                double pos = Utils.getPosition(m);
-                double posPx = m.getExecution().price();
-                p = new Position(c, pos, posPx, 0.0d, 0.0d, trade);
-            }
-
-            if (p.isZero()) {
-                uiUpdates.addAction(MainController.UpdateUiPositionsBatch.Action.DELETE, localSymbol, p);
-                positions.remove(localSymbol);
-            } else {
-                uiUpdates.addAction(MainController.UpdateUiPositionsBatch.Action.UPDATE, localSymbol, p);
-                positions.put(localSymbol, p);
-            }
             StorageUtils.storeTrade(m);
-            StorageUtils.storePositions(positions);
+
+            if ((controller.isIncludeFutures() && m.getContract().secType() == Types.SecType.FUT)
+                    || (controller.isIncludeOptions() && m.getContract().secType() == Types.SecType.OPT)) {
+                if (positions.containsKey(localSymbol)) {
+                    p = positions.get(localSymbol);
+                    p.updatePosition(m);
+                    p.setLastTrade(trade);
+                } else {
+                    Contract c = m.getContract();
+                    double pos = Utils.getPosition(m);
+                    double posPx = m.getExecution().price();
+                    p = new Position(c, pos, posPx, 0.0d, 0.0d, trade);
+                }
+
+                if (p.isZero()) {
+                    uiUpdates.addAction(MainController.UpdateUiPositionsBatch.Action.DELETE, localSymbol, p);
+                    positions.remove(localSymbol);
+                } else {
+                    uiUpdates.addAction(MainController.UpdateUiPositionsBatch.Action.UPDATE, localSymbol, p);
+                    positions.put(localSymbol, p);
+                }
+                StorageUtils.storePositions(positions);
+            }
             controller.onPositionsUpdate(uiUpdates);
             onPositionsUpdate();
         }
@@ -1151,7 +1207,10 @@ public class HedgerActor extends AbstractActor {
 
     private void onPosition(IbGateway.Position m) {
         if (m.getAccount().equals(account)) {
-            positionsBuffer.add(m);
+            if ((controller.isIncludeFutures() && m.getContract().secType() == Types.SecType.FUT)
+                    || (controller.isIncludeOptions() && m.getContract().secType() == Types.SecType.FOP)) {
+                positionsBuffer.add(m);
+            }
         }
     }
 
@@ -1206,5 +1265,6 @@ public class HedgerActor extends AbstractActor {
             StorageUtils.storePositions(positions);
         }
     }
+
 
 }

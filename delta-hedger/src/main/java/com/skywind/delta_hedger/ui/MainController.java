@@ -4,6 +4,7 @@ import akka.actor.ActorSelection;
 import akka.actor.ActorSystem;
 import com.skywind.delta_hedger.actors.*;
 import com.skywind.spring_javafx_integration.ui.FormatedCellFactory;
+import com.skywind.spring_javafx_integration.ui.MagicTableCell;
 import javafx.application.Platform;
 import javafx.beans.value.ObservableValue;
 import javafx.collections.FXCollections;
@@ -205,6 +206,26 @@ public class MainController {
         });
     }
 
+    public void onConfirmOrderPlace() {
+        Platform.runLater(()->{
+            Alert alert = new Alert(Alert.AlertType.CONFIRMATION);
+            alert.setTitle("Confirmation");
+            alert.setContentText("Do you really want to place orders?");
+
+            ButtonType buttonTypeYes = new ButtonType("Yes");
+            ButtonType buttonTypeNo = new ButtonType("No", ButtonBar.ButtonData.CANCEL_CLOSE);
+
+            alert.getButtonTypes().setAll(buttonTypeYes, buttonTypeNo);
+
+            Optional<ButtonType> result = alert.showAndWait();
+            boolean proceed = false;
+            if (result.get() == buttonTypeYes) {
+                proceed = true;
+            }
+            hedgerActor.tell(new HedgerActor.PlaceConfirmation(proceed), null);
+        });
+    }
+
     public static final class UpdateUiPositionsBatch {
 
         private final boolean fullUpdate;
@@ -359,12 +380,6 @@ public class MainController {
         sortedToData.comparatorProperty().bind(tblTargetOrders.comparatorProperty());
         tblTargetOrders.setItems(sortedToData);
 
-
-
-
-
-
-
         colTbCode.setCellValueFactory(cellData -> cellData.getValue().localSymbolProperty());
         colTbDuration.setCellValueFactory(cellData -> cellData.getValue().durationProperty());
         colTbBarTime.setCellValueFactory(cellData -> cellData.getValue().barTimeProperty());
@@ -379,11 +394,8 @@ public class MainController {
 
         colTbLut.setCellValueFactory(cellData -> cellData.getValue().lutProperty());
 
-
         sortedTimeBarData.comparatorProperty().bind(tblTimeBars.comparatorProperty());
         tblTimeBars.setItems(sortedTimeBarData);
-
-
     }
 
     public void onPositionsUpdate(UpdateUiPositionsBatch uiUpdates) {
@@ -496,13 +508,41 @@ public class MainController {
     }
 
     @FXML
+    private CheckBox cbIncludeOptions;
+
+    private volatile boolean includeOptions = true;
+
+    @FXML
+    public void onIncludeOptionsChanged() {
+        includeOptions = cbIncludeOptions.isSelected();
+    }
+
+    public boolean isIncludeOptions() {
+        return includeOptions;
+    }
+
+    @FXML
+    private CheckBox cbIncludeFutures;
+
+    private volatile boolean includeFutures = true;
+
+    @FXML
+    public void onIncludeFuturesChanged() {
+        includeFutures = cbIncludeFutures.isSelected();
+    }
+
+    public boolean isIncludeFutures() {
+        return includeFutures;
+    }
+
+    @FXML
     private TextField tfParam;
 
     @FXML
     public void onRunPython() {
         lblProgress.setText("Running...");
         lblProgress.setTextFill(Color.BLUE);
-        hedgerActor.tell(new HedgerActor.RunAmendmentProcess(tfParam.getText().equals("")? "default" : tfParam.getText()), null);
+        hedgerActor.tell(new HedgerActor.RunAmendmentProcess(tfParam.getText().equals("")? "default" : tfParam.getText(), true), null);
     }
 
     @FXML
@@ -512,6 +552,7 @@ public class MainController {
 
     public void onProgress(AmendmentProcess.Stage stage) {
         Platform.runLater(() -> {
+            lblProgress.setTextFill(Color.BLUE);
             lblProgress.setText(stage.toString());
             switch (stage) {
                 case COMPLETED:

@@ -88,5 +88,7 @@
       <CheckBox fx:id="cbRunPython" layoutX="318.0" layoutY="839.0" mnemonicParsing="false" onAction="#onRunPythonChanged" text="run python" />
       <CheckBox fx:id="cbPlaceOrders" layoutX="411.0" layoutY="839.0" mnemonicParsing="false" onAction="#onPlaceOrdersChanged" text="place orders" />
       <TextField fx:id="tfParam" layoutX="573.0" layoutY="835.0" prefHeight="25.0" prefWidth="92.0" />
+      <CheckBox fx:id="cbIncludeOptions" layoutX="181.0" layoutY="274.0" mnemonicParsing="false" onAction="#onIncludeOptionsChanged" prefHeight="17.0" prefWidth="115.0" selected="true" text="include options" />
+      <CheckBox fx:id="cbIncludeFutures" layoutX="301.0" layoutY="274.0" mnemonicParsing="false" onAction="#onIncludeFuturesChanged" prefHeight="17.0" prefWidth="115.0" selected="true" text="include futures" />
    </children>
 </AnchorPane>

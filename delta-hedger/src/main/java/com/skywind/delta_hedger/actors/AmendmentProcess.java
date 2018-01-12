@@ -39,6 +39,7 @@ public class AmendmentProcess {
         WAIT_ALL_ORDERS_CANCELLED,
         CALL_PY_SCRIPT,
         WAIT_PY_SCRIPT_COMPLETION,
+        WAITING_PLACE_CONFIRMATION,
         PLACE_ORDERS,
         COMPLETED,
         CANCELLED,
@@ -50,6 +51,7 @@ public class AmendmentProcess {
     private final boolean cancelOrders;
     private final boolean callPyScript;
     private final boolean placeOrders;
+    private final boolean confirmPlaceOrders;
     private final HedgerActor.RunAmendmentProcess command;
 
     public HedgerActor.RunAmendmentProcess getCommand() {
@@ -68,11 +70,16 @@ public class AmendmentProcess {
         return placeOrders;
     }
 
-    public AmendmentProcess(HedgerActor.RunAmendmentProcess command, boolean cancelOrders, boolean callPyScript, boolean placeOrders) {
+    public boolean isConfirmPlaceOrders() {
+        return confirmPlaceOrders && placeOrders;
+    }
+
+    public AmendmentProcess(HedgerActor.RunAmendmentProcess command, boolean cancelOrders, boolean callPyScript, boolean placeOrders, boolean confirmPlaceOrders) {
         this.command = command;
         this.cancelOrders = cancelOrders;
         this.callPyScript = callPyScript;
         this.placeOrders = placeOrders;
+        this.confirmPlaceOrders = confirmPlaceOrders;
         currentStage = Stage.COMPLETED;
         if (cancelOrders) {
             currentStage = Stage.CANCEL_ORDERS;
