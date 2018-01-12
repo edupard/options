@@ -171,6 +171,49 @@ public class StorageUtils {
         }
     }
 
+    private static final String COLUMN_TGT_ORDERS_CODE = "code";
+    private static final String COLUMN_TGT_ORDERS_PX = "px";
+    private static final String COLUMN_TGT_ORDERS_VIEW_PX = "view_px";
+    private static final String COLUMN_TGT_ORDERS_QTY = "qty";
+    private static final String COLUMN_TGT_ORDERS_TYPE = "type";
+
+
+    private final static CSVFormat CSV_TARGER_ORDERS_FORMAT = CSVFormat.DEFAULT
+            .withRecordSeparator(System.lineSeparator())
+            .withHeader(
+                    COLUMN_TGT_ORDERS_CODE,
+                    COLUMN_TGT_ORDERS_PX,
+                    COLUMN_TGT_ORDERS_QTY,
+                    COLUMN_TGT_ORDERS_TYPE,
+                    COLUMN_TGT_ORDERS_VIEW_PX
+            );
+
+    public static List<TargetOrder> readTargetOrders(String folderName) {
+        List<TargetOrder> result = new LinkedList<>();
+        String tgtOrdersPath = String.format("%s\\target_orders.csv", folderName);
+        Path path = Paths.get(tgtOrdersPath);
+        if (Files.exists(path)) {
+            try (CSVParser reader = new CSVParser(new FileReader(tgtOrdersPath), CSV_TARGER_ORDERS_FORMAT.withSkipHeaderRecord())) {
+                for (CSVRecord r : reader) {
+                    String code = r.get(COLUMN_TGT_ORDERS_CODE);
+                    double px = Double.parseDouble(r.get(COLUMN_TGT_ORDERS_PX));
+                    String viewPx = r.get(COLUMN_TGT_ORDERS_VIEW_PX);
+                    double qty = Double.parseDouble(r.get(COLUMN_TGT_ORDERS_QTY));
+                    String orderType = r.get(COLUMN_TGT_ORDERS_TYPE);
+                    result.add(new TargetOrder(code, px, viewPx, qty, orderType));
+                }
+            } catch (FileNotFoundException e) {
+                throw new RuntimeException(e);
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+        }
+        else {
+            throw new RuntimeException("Target order file absent");
+        }
+        return result;
+    }
+
     public static void storePositions(Map<String, Position> positionsByLocalSymbol) {
 
         Path path = Paths.get(DATA_DIR_PATH);

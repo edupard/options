@@ -2,9 +2,7 @@ package com.skywind.delta_hedger.ui;
 
 import akka.actor.ActorSelection;
 import akka.actor.ActorSystem;
-import com.skywind.delta_hedger.actors.HedgerActor;
-import com.skywind.delta_hedger.actors.HedgerOrder;
-import com.skywind.delta_hedger.actors.Position;
+import com.skywind.delta_hedger.actors.*;
 import com.skywind.spring_javafx_integration.ui.FormatedCellFactory;
 import javafx.application.Platform;
 import javafx.beans.value.ObservableValue;
@@ -46,7 +44,7 @@ public class MainController {
     private Label lblIbConnection;
 
     @FXML
-    private Label lblPythonLastResult;
+    private Label lblProgress;
 
     @FXML
     private TableView<PositionEntry> tblPositions;
@@ -102,6 +100,24 @@ public class MainController {
 
 
     @FXML
+    private TableView<TargetOrderEntry> tblTargetOrders;
+
+    @FXML
+    private TableColumn<TargetOrderEntry, String> colToCode;
+    @FXML
+    private TableColumn<TargetOrderEntry, String> colToSide;
+    @FXML
+    private TableColumn<TargetOrderEntry, String> colToPx;
+    @FXML
+    private TableColumn<TargetOrderEntry, Double> colToQty;
+    @FXML
+    private TableColumn<TargetOrderEntry, String> colToType;
+
+    private final ObservableList<TargetOrderEntry> toData = FXCollections.observableArrayList();
+    private final FilteredList<TargetOrderEntry> filteredToData = new FilteredList<>(toData, p -> true);
+    private final SortedList<TargetOrderEntry> sortedToData = new SortedList<>(filteredToData);
+
+    @FXML
     private TableView<TimeBarEntry> tblTimeBars;
     @FXML
     private TableColumn<TimeBarEntry, String> colTbCode;
@@ -126,7 +142,6 @@ public class MainController {
     private final ObservableList<TimeBarEntry> timeBarData = FXCollections.observableArrayList();
     private final FilteredList<TimeBarEntry> filteredTimeBarData = new FilteredList<>(timeBarData, p -> true);
     private final SortedList<TimeBarEntry> sortedTimeBarData = new SortedList<>(filteredTimeBarData);
-
 
     public Parent getParent() {
         return anchor;
@@ -179,7 +194,16 @@ public class MainController {
         });
     }
 
-
+    public void onTargetOrders(List<TargetOrder> to) {
+        Platform.runLater(() -> {
+            toData.clear();
+            to.stream().forEach(ho -> {
+                TargetOrderEntry toEntry = new TargetOrderEntry();
+                toEntry.updateUi(ho);
+                toData.add(toEntry);
+            });
+        });
+    }
 
     public static final class UpdateUiPositionsBatch {
 
@@ -250,7 +274,7 @@ public class MainController {
 
     @PostConstruct
     public void init() {
-        lblPythonLastResult.setText("");
+        lblProgress.setText("");
 
         hedgerActor = actorSystem.actorSelection("/user/app/hedger");
 
@@ -324,6 +348,23 @@ public class MainController {
         tblOpenOrders.setItems(sortedOoData);
 
 
+
+        colToCode.setCellValueFactory(cellData -> cellData.getValue().codeProperty());
+        colToSide.setCellValueFactory(cellData -> cellData.getValue().sideProperty());
+        colToPx.setCellValueFactory(cellData -> cellData.getValue().viewPxProperty());
+        colToQty.setCellValueFactory(cellData -> cellData.getValue().qtyProperty().asObject());
+        colToQty.setCellFactory(new FormatedCellFactory<>("%.0f"));
+        colToType.setCellValueFactory(cellData -> cellData.getValue().orderTypeProperty());
+
+        sortedToData.comparatorProperty().bind(tblTargetOrders.comparatorProperty());
+        tblTargetOrders.setItems(sortedToData);
+
+
+
+
+
+
+
         colTbCode.setCellValueFactory(cellData -> cellData.getValue().localSymbolProperty());
         colTbDuration.setCellValueFactory(cellData -> cellData.getValue().durationProperty());
         colTbBarTime.setCellValueFactory(cellData -> cellData.getValue().barTimeProperty());
@@ -393,18 +434,75 @@ public class MainController {
     }
 
     @FXML
-    CheckBox cbIncludeManualOrders;
+    private CheckBox cbIncludeManualOrders;
 
-    @FXML
-    public void onRefreshOpenOrders() {
-        hedgerActor.tell(new HedgerActor.RefreshOpenOrders(cbIncludeManualOrders.isSelected()), null);
+    private volatile boolean includeManualOrders = false;
+
+    public boolean isIncludeManualOrders() {
+        return includeManualOrders;
     }
 
     @FXML
+    public void onIncludeManualOrdersChanged() {
+        includeManualOrders = cbIncludeManualOrders.isSelected();
+    }
+
+    @FXML
+    public void onRefreshOpenOrders() {
+        hedgerActor.tell(new HedgerActor.RefreshOpenOrders(), null);
+    }
+
+
+    @FXML
+    private CheckBox cbCancelOrders;
+
+    private volatile boolean cancelOrders = false;
+
+    @FXML
+    public void onCancelOrdersChanged() {
+        cancelOrders = cbCancelOrders.isSelected();
+    }
+
+    public boolean isCancelOrders() {
+        return cancelOrders;
+    }
+
+    @FXML
+    private CheckBox cbRunPython;
+
+    private volatile boolean runPython = false;
+
+    @FXML
+    public void onRunPythonChanged() {
+        runPython = cbRunPython.isSelected();
+    }
+
+    public boolean isRunPython() {
+        return runPython;
+    }
+
+    @FXML
+    private CheckBox cbPlaceOrders;
+
+    private volatile boolean placeOrders = false;
+
+    @FXML
+    public void onPlaceOrdersChanged() {
+        placeOrders = cbPlaceOrders.isSelected();
+    }
+
+    public boolean isPlaceOrders() {
+        return placeOrders;
+    }
+
+    @FXML
+    private TextField tfParam;
+
+    @FXML
     public void onRunPython() {
-        lblPythonLastResult.setText("Running...");
-        lblPythonLastResult.setTextFill(Color.BLUE);
-        hedgerActor.tell(new HedgerActor.RunPython(), null);
+        lblProgress.setText("Running...");
+        lblProgress.setTextFill(Color.BLUE);
+        hedgerActor.tell(new HedgerActor.RunAmendmentProcess(tfParam.getText().equals("")? "default" : tfParam.getText()), null);
     }
 
     @FXML
@@ -412,24 +510,20 @@ public class MainController {
         hedgerActor.tell(new HedgerActor.ShowPortfolio(), null);
     }
 
-    public void onPythonScriptResult(HedgerActor.PythonScriptResult m) {
-
+    public void onProgress(AmendmentProcess.Stage stage) {
         Platform.runLater(() -> {
-            switch (m.getResult()) {
-                case FAILURE:
-                    lblPythonLastResult.setText("Failure");
-                    lblPythonLastResult.setTextFill(Color.RED);
+            lblProgress.setText(stage.toString());
+            switch (stage) {
+                case COMPLETED:
+                    lblProgress.setTextFill(Color.GREEN);
                     break;
-                case SUCCESS:
-                    lblPythonLastResult.setText("Success");
-                    lblPythonLastResult.setTextFill(Color.GREEN);
+                case FAILED:
+                    lblProgress.setTextFill(Color.RED);
                     break;
-                case TIMEOUT:
-                    lblPythonLastResult.setText("Timeout");
-                    lblPythonLastResult.setTextFill(Color.RED);
+                case CANCELLED:
+                    lblProgress.setTextFill(Color.ORANGE);
                     break;
             }
-
         });
     }
 }

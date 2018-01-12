@@ -62,13 +62,31 @@
          </columns>
       </TableView>
       <Button layoutX="57.0" layoutY="787.0" mnemonicParsing="false" onAction="#onRefreshOpenOrders" text="Refresh open orders" />
-      <CheckBox fx:id="cbIncludeManualOrders" layoutX="209.0" layoutY="791.0" mnemonicParsing="false" text="include manual orders" />
-      <Button layoutX="184.0" layoutY="835.0" mnemonicParsing="false" onAction="#onRunPython" text="Run python" />
-      <Label fx:id="lblPythonLastResult" layoutX="280.0" layoutY="839.0" prefHeight="17.0" prefWidth="158.0" text="LBL_PYTHON_LAST_CALL">
+      <CheckBox fx:id="cbIncludeManualOrders" layoutX="209.0" layoutY="791.0" mnemonicParsing="false" onAction="#onIncludeManualOrdersChanged" text="include manual orders" />
+      <Button layoutX="511.0" layoutY="835.0" mnemonicParsing="false" onAction="#onRunPython" text="Run" />
+      <Label fx:id="lblProgress" layoutX="675.0" layoutY="839.0" prefHeight="17.0" prefWidth="472.0" text="LBL_PROGRESS">
          <font>
             <Font name="System Bold" size="12.0" />
          </font>
       </Label>
       <Button layoutX="57.0" layoutY="835.0" mnemonicParsing="false" onAction="#onShowPortfolio" text="Show portfolio" />
+      <TableView fx:id="tblTargetOrders" editable="true" layoutX="672.0" layoutY="579.0" prefHeight="200.0" prefWidth="472.0">
+         <columns>
+            <TableColumn fx:id="colToCode" prefWidth="136.0" text="code" />
+            <TableColumn fx:id="colToSide" prefWidth="61.0" text="side" />
+            <TableColumn fx:id="colToPx" prefWidth="99.0" text="px" />
+            <TableColumn fx:id="colToQty" prefWidth="98.0" text="qty" />
+            <TableColumn fx:id="colToType" minWidth="2.0" prefWidth="73.0" text="type" />
+         </columns>
+      </TableView>
+      <Label fx:id="lblApiConnection1" layoutX="580.0" layoutY="670.0" text="=====&gt;">
+         <font>
+            <Font name="System Bold" size="12.0" />
+         </font>
+      </Label>
+      <CheckBox fx:id="cbCancelOrders" layoutX="209.0" layoutY="839.0" mnemonicParsing="false" onAction="#onCancelOrdersChanged" text="cancel orders" />
+      <CheckBox fx:id="cbRunPython" layoutX="318.0" layoutY="839.0" mnemonicParsing="false" onAction="#onRunPythonChanged" text="run python" />
+      <CheckBox fx:id="cbPlaceOrders" layoutX="411.0" layoutY="839.0" mnemonicParsing="false" onAction="#onPlaceOrdersChanged" text="place orders" />
+      <TextField fx:id="tfParam" layoutX="573.0" layoutY="835.0" prefHeight="25.0" prefWidth="92.0" />
    </children>
 </AnchorPane>

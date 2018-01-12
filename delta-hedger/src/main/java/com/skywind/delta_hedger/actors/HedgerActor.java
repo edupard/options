@@ -90,8 +90,17 @@ public class HedgerActor extends AbstractActor {
 
     }
 
-    public static final class RunPython {
+    public static final class RunAmendmentProcess {
 
+        private final String params;
+
+        public String getParams() {
+            return params;
+        }
+
+        public RunAmendmentProcess(String params) {
+            this.params = params;
+        }
     }
 
     public static final class PythonScriptResult extends MessageSentToExactActorInstance {
@@ -104,27 +113,25 @@ public class HedgerActor extends AbstractActor {
 
         private final Result result;
 
-        public PythonScriptResult(UUID actorId, Result result) {
+        private final String folder;
+
+        public PythonScriptResult(UUID actorId, Result result, String folder) {
             super(actorId);
             this.result = result;
+            this.folder = folder;
         }
 
         public Result getResult() {
             return result;
         }
+
+        public String getFolder() {
+            return folder;
+        }
     }
 
 
     public static final class RefreshOpenOrders {
-        private final boolean includeManualOrders;
-
-        public RefreshOpenOrders(boolean includeManualOrders) {
-            this.includeManualOrders = includeManualOrders;
-        }
-
-        public boolean isIncludeManualOrders() {
-            return includeManualOrders;
-        }
     }
 
     public static final class IrChanged {
@@ -261,8 +268,8 @@ public class HedgerActor extends AbstractActor {
                 .match(RefreshOpenOrders.class, m -> {
                     onRefreshOpenOrders(m);
                 })
-                .match(RunPython.class, m -> {
-                    onRunPython(m);
+                .match(RunAmendmentProcess.class, m -> {
+                    onRunAmendmentProcess(m);
                 })
                 .match(ShowPortfolio.class, m -> {
                     onShowPortfolio(m);
@@ -418,7 +425,10 @@ public class HedgerActor extends AbstractActor {
     private void recievedUnknown(Object m) {
     }
 
+    private int nextOrderId = -1;
+
     private void onNextValidId(IbGateway.NextValidId m) {
+        nextOrderId = m.getNextValidId();
         onPositionsUpdate();
         requestExecutions();
     }
@@ -429,13 +439,129 @@ public class HedgerActor extends AbstractActor {
     @Value("${script.folder}")
     private String scriptFolder;
 
+    private List<TargetOrder> targetOrders = new LinkedList<>();
+
+    private AmendmentProcess amendmentProcess = null;
+
+    private void doNextAmendmentProcessStage() {
+        if (amendmentProcess == null) {
+            return;
+        }
+        if (amendmentProcess.getCurrentStage() == AmendmentProcess.Stage.CANCELLED
+                || amendmentProcess.getCurrentStage() == AmendmentProcess.Stage.COMPLETED) {
+            controller.onProgress(amendmentProcess.getCurrentStage());
+            return;
+        }
+        switch (amendmentProcess.getCurrentStage()) {
+            case CANCEL_ORDERS:
+                cancelAllOrders();
+                getOpenOrders();
+                amendmentProcess.setCurrentStage(AmendmentProcess.Stage.WAIT_ALL_ORDERS_CANCELLED);
+                break;
+            case CALL_PY_SCRIPT:
+                runPython();
+                amendmentProcess.setCurrentStage(AmendmentProcess.Stage.WAIT_PY_SCRIPT_COMPLETION);
+                break;
+            case PLACE_ORDERS:
+                placeTargetOrders();
+                amendmentProcess.setCurrentStage(AmendmentProcess.Stage.COMPLETED);
+                break;
+        }
+        controller.onProgress(amendmentProcess.getCurrentStage());
+    }
+
+    private void cancelAllOrders() {
+        for (Integer orderId : openOrders.keySet()) {
+            // TODO: uncomment for real trading
+//            ibGateway.getClientSocket().cancelOrder(orderId);
+            amendmentProcess.cancelOrder(orderId);
+        }
+    }
+
+    private void placeTargetOrders() {
+        Set<String> futCodes = targetOrders.stream().map(TargetOrder::getCode).collect(Collectors.toSet());
+        for (String code : futCodes) {
+            TimeBarRequest r = new TimeBarRequest(code, "4 hours");
+            TimebarArray timebarArray = currentBars.get(r);
+            double currentPx = timebarArray.getLastPx();
+            // TODO: what if price absent
+            List<TargetOrder> sortedOrders = targetOrders.stream().filter((to) -> to.getCode().equals(code)).sorted(Comparator.comparing((to)-> Math.abs(to.getPx() - currentPx))).collect(Collectors.toList());
+            for (TargetOrder to : sortedOrders) {
+                amendmentProcess.placeOrder(placeTargetOrder(to));
+            }
+        }
+    }
+
+    private Contract getContract(String code) {
+        Contract contract = new Contract();
+        contract.secType(Types.SecType.FUT);
+        contract.localSymbol(code);
+        contract.exchange(exchange);
+        contract.currency(ccy);
+        return contract;
+    }
+
+    private int placeTargetOrder (TargetOrder to) {
+        Contract contract = getContract(to.getCode());
+        OrderType ot = OrderType.STP;
+        switch (to.getOrderType()) {
+            case "STP":
+                ot = OrderType.STP;
+                break;
+            case "MKT":
+                ot = OrderType.MKT;
+                break;
+        }
+        return placeOrderImpl(contract, to.getQty() > 0 ? Types.Action.BUY : Types.Action.SELL, Math.abs(to.getQty()), ot);
+    }
+
+    public int placeOrderImpl(Contract contract, Types.Action action, double totalQuantity, OrderType orderType) {
+        int orderId = nextOrderId;
+        Order order = new Order();
+        order.action(action);
+        order.orderType(orderType);
+        if (orderType == OrderType.STP) {
+            order.outsideRth(true);
+            order.tif(Types.TimeInForce.GTC);
+        }
+        order.totalQuantity(totalQuantity);
+        order.account(account);
+        // TODO: uncomment for real trading
+//        ibGateway.getClientSocket().placeOrder(orderId, contract, order);
+        nextOrderId++;
+        return orderId;
+    }
+
     private void onPythonScriptResult(PythonScriptResult m) {
         if (m.getResult() == PythonScriptResult.Result.FAILURE
                 || m.getResult() == PythonScriptResult.Result.TIMEOUT) {
             String message = String.format("Options: python script %s", m.getResult().toString());
             emailActorSelection.tell(new EmailActor.Email(message, message), self());
+            if (amendmentProcess != null) {
+                if (amendmentProcess.getCurrentStage() == AmendmentProcess.Stage.WAIT_PY_SCRIPT_COMPLETION) {
+                    amendmentProcess.setCurrentStage(AmendmentProcess.Stage.FAILED);
+                }
+            }
+            targetOrders = new LinkedList<>();
         }
-        controller.onPythonScriptResult(m);
+        else {
+            targetOrders = StorageUtils.readTargetOrders(m.getFolder());
+            if (amendmentProcess != null) {
+                if (amendmentProcess.getCurrentStage() == AmendmentProcess.Stage.WAIT_PY_SCRIPT_COMPLETION) {
+                    if (amendmentProcess.isPlaceOrders()) {
+                        amendmentProcess.setCurrentStage(AmendmentProcess.Stage.PLACE_ORDERS);
+                    }
+                    else {
+                        amendmentProcess.setCurrentStage(AmendmentProcess.Stage.COMPLETED);
+                    }
+                }
+            }
+        }
+        controller.onTargetOrders(targetOrders);
+        if (amendmentProcess != null) {
+            controller.onProgress(amendmentProcess.getCurrentStage());
+        }
+        doNextAmendmentProcessStage();
     }
 
     private static final DateTimeFormatter RUN_TIME_FMT = new DateTimeFormatterBuilder()
@@ -448,7 +574,7 @@ public class HedgerActor extends AbstractActor {
             .toFormatter()
             .withZone(ZoneId.systemDefault());
 
-    private void prepareScriptData(String dataFolder, String dataFolderName, String sRunTime) throws IOException {
+    private void prepareScriptData(String dataFolder, String dataFolderName, String sRunTime, String scriptParams) throws IOException {
         Path path = Paths.get(dataFolder);
         if (!Files.exists(path)) {
             Files.createDirectories(path);
@@ -460,7 +586,7 @@ public class HedgerActor extends AbstractActor {
         StorageUtils.prepareInputBars(currentBars, inputTimeBarsFileName);
         String comandLineParametersFileName = String.format("%s\\command_line.txt", dataFolder);
         try (PrintWriter out = new PrintWriter(comandLineParametersFileName)) {
-            out.println(String.format("\"%s\" \"%s\"", dataFolderName, sRunTime));
+            out.println(String.format("\"%s\" \"%s\" \"%s\"", dataFolderName, sRunTime, scriptParams));
         }
     }
 
@@ -470,7 +596,7 @@ public class HedgerActor extends AbstractActor {
         String dataFolderName = "profile_data";
         String DATA_FOLDER = String.format("%s\\data\\%s", scriptFolder, dataFolderName);
         try {
-            prepareScriptData(DATA_FOLDER, dataFolderName, sRunTime);
+            prepareScriptData(DATA_FOLDER, dataFolderName, sRunTime, "");
             String pythonScript = String.format("%s\\portfolio.py", scriptFolder);
             ProcessBuilder processBuilder = new ProcessBuilder(pythonPath, pythonScript, dataFolderName, sRunTime);
             processBuilder.start();
@@ -479,52 +605,61 @@ public class HedgerActor extends AbstractActor {
         }
     }
 
-    private void onRunPython(RunPython m) {
+    private void runPython() {
         Instant runTime = Instant.now();
         String sRunTime = RUN_TIME_FMT.format(runTime);
         String dataFolderName = RUN_TIME_FILE_NAME_FMT.format(runTime);
         String DATA_FOLDER = String.format("%s\\data\\%s", scriptFolder, dataFolderName);
 
         try {
-            prepareScriptData(DATA_FOLDER, dataFolderName, sRunTime);
+            prepareScriptData(DATA_FOLDER, dataFolderName, sRunTime, amendmentProcess.getCommand().getParams());
         }
         catch (Throwable t) {
             LOGGER.error("", t);
-            self().tell(new PythonScriptResult(actorId, PythonScriptResult.Result.FAILURE), self());
+            self().tell(new PythonScriptResult(actorId, PythonScriptResult.Result.FAILURE, DATA_FOLDER), self());
             return;
         }
 
         String pythonScript = String.format("%s\\delta-hedger.py", scriptFolder);
-        ProcessBuilder processBuilder = new ProcessBuilder(pythonPath, pythonScript, dataFolderName, sRunTime);
+        ProcessBuilder processBuilder = new ProcessBuilder(pythonPath, pythonScript, dataFolderName, sRunTime, amendmentProcess.getCommand().getParams());
         try {
             Process process = processBuilder.start();
             Thread waitThread = new Thread(() -> {
                 try {
                     if (process.waitFor(10l, TimeUnit.SECONDS)) {
                         int exitCode = process.exitValue();
-                        self().tell(new PythonScriptResult(actorId, exitCode == 0 ? PythonScriptResult.Result.SUCCESS : PythonScriptResult.Result.FAILURE), self());
+                        self().tell(new PythonScriptResult(actorId, exitCode == 0 ? PythonScriptResult.Result.SUCCESS : PythonScriptResult.Result.FAILURE, DATA_FOLDER), self());
                     } else {
-                        self().tell(new PythonScriptResult(actorId, PythonScriptResult.Result.TIMEOUT), self());
+                        self().tell(new PythonScriptResult(actorId, PythonScriptResult.Result.TIMEOUT, DATA_FOLDER), self());
                     }
                 } catch (Throwable t) {
                     LOGGER.error("", t);
-                    self().tell(new PythonScriptResult(actorId, PythonScriptResult.Result.FAILURE), self());
+                    self().tell(new PythonScriptResult(actorId, PythonScriptResult.Result.FAILURE, DATA_FOLDER), self());
                 }
             });
             waitThread.setDaemon(true);
             waitThread.start();
         } catch (Throwable t) {
             LOGGER.error("", t);
-            self().tell(new PythonScriptResult(actorId, PythonScriptResult.Result.FAILURE), self());
+            self().tell(new PythonScriptResult(actorId, PythonScriptResult.Result.FAILURE, DATA_FOLDER), self());
         }
+    }
+
+    private void onRunAmendmentProcess(RunAmendmentProcess m) {
+        amendmentProcess = new AmendmentProcess(m, controller.isCancelOrders(), controller.isRunPython(), controller.isPlaceOrders());
+        doNextAmendmentProcessStage();
     }
 
     private boolean includeManualOrders = false;
 
-    private void onRefreshOpenOrders(RefreshOpenOrders m) {
+    private void getOpenOrders() {
         openOrders.clear();
-        includeManualOrders = m.isIncludeManualOrders();
+        includeManualOrders = controller.isIncludeManualOrders();
         ibGateway.getClientSocket().reqOpenOrders();
+    }
+
+    private void onRefreshOpenOrders(RefreshOpenOrders m) {
+        getOpenOrders();
     }
 
     private Map<Integer, HedgerOrder> openOrders = new HashMap<>();
@@ -584,38 +719,71 @@ public class HedgerActor extends AbstractActor {
     }
 
     private void onOrderStatus(IbGateway.OrderStatus m) {
-        if (m.getClientId() != clientId) {
-            return;
-        }
-        if (!includeManualOrders && m.getOrderId() < 0) {
-            return;
-        }
-        if (openOrders.containsKey(m.getOrderId())) {
-            HedgerOrder ho = openOrders.get(m.getOrderId());
+        try {
+            if (m.getClientId() != clientId) {
+                return;
+            }
+            if (!includeManualOrders && m.getOrderId() < 0) {
+                return;
+            }
             OrderStatus orderStatus = OrderStatus.get(m.getStatus());
-            switch (orderStatus) {
-                case Cancelled:
-                case ApiCancelled:
-                case PendingCancel:
-                    ho.onCancelled();
-                    break;
-                case Filled:
-                    ho.onFilled();
-                    break;
-                case Inactive:
-                    ho.onRejected();
-                    break;
+
+            if (amendmentProcess != null) {
+                if (amendmentProcess.isPlacedOrder(m.getOrderId())) {
+                    if (orderStatus == OrderStatus.Inactive) {
+                        String message = "Options: order rejected";
+                        emailActorSelection.tell(new EmailActor.Email(message, message), self());
+                    }
+                }
+                if (amendmentProcess.isCancelledOrder(m.getOrderId())) {
+                    if (orderStatus == OrderStatus.Cancelled) {
+                        amendmentProcess.onCancelComplete(m.getOrderId());
+                        if (amendmentProcess.isAllOrdersCancelled()) {
+                            if (amendmentProcess.getCurrentStage() == AmendmentProcess.Stage.WAIT_ALL_ORDERS_CANCELLED) {
+                                if (amendmentProcess.isCallPyScript()) {
+                                    amendmentProcess.setCurrentStage(AmendmentProcess.Stage.CALL_PY_SCRIPT);
+                                } else if (amendmentProcess.isPlaceOrders()) {
+                                    amendmentProcess.setCurrentStage(AmendmentProcess.Stage.PLACE_ORDERS);
+                                } else {
+                                    amendmentProcess.setCurrentStage(AmendmentProcess.Stage.COMPLETED);
+                                }
+                            }
+                            controller.onProgress(amendmentProcess.getCurrentStage());
+                            doNextAmendmentProcessStage();
+                        }
+                    }
+                }
             }
-            if (ho.isTerminalState()) {
-                openOrders.remove(m.getOrderId());
+
+            if (openOrders.containsKey(m.getOrderId())) {
+                HedgerOrder ho = openOrders.get(m.getOrderId());
+
+                switch (orderStatus) {
+                    case Cancelled:
+                    case ApiCancelled:
+                    case PendingCancel:
+                        ho.onCancelled();
+                        break;
+                    case Filled:
+                        ho.onFilled();
+                        break;
+                    case Inactive:
+                        ho.onRejected();
+                        break;
+                }
+                if (ho.isTerminalState()) {
+                    openOrders.remove(m.getOrderId());
+                }
             }
+        }
+        finally {
+            List<HedgerOrder> oo = openOrders.values().stream().map((ho)->new HedgerOrder(ho)).collect(Collectors.toList());
+            controller.onOpenOrders(oo);
         }
     }
 
     private void onOpenOrderEnd(IbGateway.OpenOrderEnd m) {
-        List<HedgerOrder> oo = openOrders.values().stream().collect(Collectors.toList());
 
-        controller.onOpenOrders(oo);
     }
 
     private void onReloadPositions(ReloadPositions m) {
@@ -793,9 +961,17 @@ public class HedgerActor extends AbstractActor {
     }
 
     public static final class TimebarArray {
+
+        public double getLastPx() {
+            return lastTimeBar.close;
+        }
+
+        private Timebar lastTimeBar = null;
+
         private final Set<Timebar> bars = new HashSet<>();
 
         public void onTimeBar(Timebar tb) {
+            lastTimeBar = tb;
             bars.remove(tb);
             bars.add(tb);
         }
