@@ -924,6 +924,9 @@ public class HedgerActor extends AbstractActor {
                     positions.put(localSymbol, p);
                 }
                 StorageUtils.storePositions(positions);
+                if (controller.isTriggerOnTrade()) {
+                    self().tell(new RunAmendmentProcess(controller.getScriptParams(), false), self());
+                }
             }
             controller.onPositionsUpdate(uiUpdates);
             onPositionsUpdate();

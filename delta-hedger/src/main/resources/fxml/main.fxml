@@ -8,7 +8,7 @@
 <?import javafx.scene.control.*?>
 <?import javafx.scene.layout.*?>
 
-<AnchorPane fx:id="anchor" prefHeight="881.0" prefWidth="1208.0" xmlns="http://javafx.com/javafx/8" xmlns:fx="http://javafx.com/fxml/1" fx:controller="com.skywind.delta_hedger.ui.MainController">
+<AnchorPane fx:id="anchor" prefHeight="933.0" prefWidth="1208.0" xmlns="http://javafx.com/javafx/8" xmlns:fx="http://javafx.com/fxml/1" fx:controller="com.skywind.delta_hedger.ui.MainController">
    <children>
       <Button layoutX="57.0" layoutY="270.0" mnemonicParsing="false" onAction="#onReloadPositions" text="Reload positions" />
       <TableView fx:id="tblPositions" editable="true" layoutX="57.0" layoutY="56.0" prefHeight="200.0" prefWidth="1087.0">
@@ -69,7 +69,7 @@
             <Font name="System Bold" size="12.0" />
          </font>
       </Label>
-      <Button layoutX="57.0" layoutY="835.0" mnemonicParsing="false" onAction="#onShowPortfolio" text="Show portfolio" />
+      <Button layoutX="424.0" layoutY="787.0" mnemonicParsing="false" onAction="#onShowPortfolio" text="Show portfolio" />
       <TableView fx:id="tblTargetOrders" editable="true" layoutX="672.0" layoutY="579.0" prefHeight="200.0" prefWidth="472.0">
          <columns>
             <TableColumn fx:id="colToCode" prefWidth="136.0" text="code" />
@@ -91,5 +91,6 @@
       <CheckBox fx:id="cbIncludeOptions" layoutX="181.0" layoutY="274.0" mnemonicParsing="false" onAction="#onIncludeOptionsChanged" prefHeight="17.0" prefWidth="115.0" selected="true" text="include options" />
       <CheckBox fx:id="cbIncludeFutures" layoutX="301.0" layoutY="274.0" mnemonicParsing="false" onAction="#onIncludeFuturesChanged" prefHeight="17.0" prefWidth="115.0" selected="true" text="include futures" />
       <Button fx:id="btnStartStop" layoutX="220.0" layoutY="19.0" mnemonicParsing="false" onAction="#onStartStop" text="Start" />
+      <CheckBox fx:id="cbTriggerOnTrade" layoutX="57.0" layoutY="839.0" mnemonicParsing="false" onAction="#onTriggerOnTradeChanged" text="trigger on trade" />
    </children>
 </AnchorPane>

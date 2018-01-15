@@ -4,7 +4,6 @@ import akka.actor.ActorSelection;
 import akka.actor.ActorSystem;
 import com.skywind.delta_hedger.actors.*;
 import com.skywind.spring_javafx_integration.ui.FormatedCellFactory;
-import com.skywind.spring_javafx_integration.ui.MagicTableCell;
 import javafx.application.Platform;
 import javafx.beans.value.ObservableValue;
 import javafx.collections.FXCollections;
@@ -551,13 +550,31 @@ public class MainController {
     }
 
     @FXML
+    private CheckBox cbTriggerOnTrade;
+
+    private volatile boolean triggerOnTrade = false;
+
+    @FXML
+    public void onTriggerOnTradeChanged() {
+        triggerOnTrade = cbTriggerOnTrade.isSelected();
+    }
+
+    public boolean isTriggerOnTrade() {
+        return triggerOnTrade;
+    }
+
+    @FXML
     private TextField tfParam;
+
+    public String getScriptParams() {
+        return tfParam.getText().equals("")? "default" : tfParam.getText();
+    }
 
     @FXML
     public void onRunPython() {
         lblProgress.setText("Running...");
         lblProgress.setTextFill(Color.BLUE);
-        hedgerActor.tell(new HedgerActor.RunAmendmentProcess(tfParam.getText().equals("")? "default" : tfParam.getText(), true), null);
+        hedgerActor.tell(new HedgerActor.RunAmendmentProcess(getScriptParams(), true), null);
     }
 
     @FXML
