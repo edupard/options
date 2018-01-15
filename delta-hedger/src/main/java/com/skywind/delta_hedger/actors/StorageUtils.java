@@ -25,6 +25,7 @@ import java.util.Map;
 
 
 public class StorageUtils {
+    private static final String COLUMN_SELECTED = "Selected";
     private static final String COLUMN_LOCAL_SYMBOL = "LocalSymbol";
     private static final String COLUMN_SYMBOL = "Symbol";
     private static final String COLUMN_SEC_TYPE = "SecType";
@@ -58,6 +59,7 @@ public class StorageUtils {
     private final static CSVFormat CSV_POSITIONS_FORMAT = CSVFormat.DEFAULT
             .withRecordSeparator(System.lineSeparator())
             .withHeader(
+                    COLUMN_SELECTED,
                     COLUMN_LOCAL_SYMBOL,
                     COLUMN_SYMBOL,
                     COLUMN_SEC_TYPE,
@@ -117,6 +119,7 @@ public class StorageUtils {
         try (CSVPrinter writer = new CSVPrinter(new FileWriter(positionsFileName, false), CSV_INPUT_POSITIONS_FORMAT)) {
             for (Map.Entry<String, Position> entry : positionsByLocalSymbol.entrySet()) {
                 Position pi = entry.getValue();
+
                 //Check contract details and expiry
                 writer.printRecord(
                         pi.getContract().localSymbol(),
@@ -229,6 +232,7 @@ public class StorageUtils {
             for (Map.Entry<String, Position> entry : positionsByLocalSymbol.entrySet()) {
                 Position pi = entry.getValue();
                 writer.printRecord(
+                        pi.isSelected(),
                         pi.getContract().localSymbol(),
                         pi.getContract().symbol(),
                         pi.getContract().secType(),
@@ -267,12 +271,14 @@ public class StorageUtils {
                     c.right(r.get(COLUMN_RIGHT));
                     c.multiplier(r.get(COLUMN_MULTIPLIER));
 
+
+                    boolean selected = Boolean.parseBoolean(r.get(COLUMN_SELECTED));
                     double pos = Double.parseDouble(r.get(COLUMN_POSITION));
                     double posPx = Double.parseDouble(r.get(COLUMN_PRICE));
                     double ir = Double.parseDouble(r.get(COLUMN_IR));
                     double vol = Double.parseDouble(r.get(COLUMN_VOL));
 
-                    Position p = new Position(c, pos, posPx, vol, ir, null);
+                    Position p = new Position(selected, c, pos, posPx, vol, ir, null);
                     positions.put(c.localSymbol(), p);
                 }
             } catch (FileNotFoundException e) {

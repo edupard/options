@@ -5,6 +5,7 @@ import akka.actor.*;
 import akka.actor.SupervisorStrategy.Directive;
 import akka.japi.Function;
 import com.skywind.delta_hedger.ui.MainController;
+import com.skywind.trading.spring_akka_integration.EmailActor;
 import com.skywind.trading.spring_akka_integration.SpringExtension;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -39,6 +40,8 @@ public class AppActor extends AbstractActor {
 
     private ActorRef hedgerActor;
 
+    private ActorSelection emailActorSelection;
+
     @Override
     public Receive createReceive() {
         return receiveBuilder()
@@ -57,6 +60,8 @@ public class AppActor extends AbstractActor {
                     if (t instanceof FatalException) {
                         return SupervisorStrategy.stop();
                     }
+
+                    emailActorSelection.tell(new EmailActor.Email("Options: exception", t.getMessage()), self());
                     return SupervisorStrategy.restart();
                 }
             });
@@ -67,6 +72,8 @@ public class AppActor extends AbstractActor {
     }
 
     private void startApplication(StartApplication m) {
+        emailActorSelection = actorSystem.actorSelection("/user/email");
+
         hedgerActor = getContext().actorOf(springExtension.props(HedgerActor.BEAN_NAME), "hedger");
         hedgerActor.tell(new HedgerActor.Start(), self());
         LOGGER.debug("Started!");

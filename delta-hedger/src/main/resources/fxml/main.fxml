@@ -90,5 +90,6 @@
       <TextField fx:id="tfParam" layoutX="573.0" layoutY="835.0" prefHeight="25.0" prefWidth="92.0" />
       <CheckBox fx:id="cbIncludeOptions" layoutX="181.0" layoutY="274.0" mnemonicParsing="false" onAction="#onIncludeOptionsChanged" prefHeight="17.0" prefWidth="115.0" selected="true" text="include options" />
       <CheckBox fx:id="cbIncludeFutures" layoutX="301.0" layoutY="274.0" mnemonicParsing="false" onAction="#onIncludeFuturesChanged" prefHeight="17.0" prefWidth="115.0" selected="true" text="include futures" />
+      <Button fx:id="btnStartStop" layoutX="220.0" layoutY="19.0" mnemonicParsing="false" onAction="#onStartStop" text="Start" />
    </children>
 </AnchorPane>

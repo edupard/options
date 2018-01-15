@@ -24,8 +24,10 @@ public class Position {
     private double vol;
     private double ir;
     private Trade lastTrade;
+    private boolean selected;
 
-    public Position(Contract contract, double pos, double posPx, double vol, double ir, Trade lastTrade) {
+    public Position(boolean selected, Contract contract, double pos, double posPx, double vol, double ir, Trade lastTrade) {
+        this.selected = selected;
         this.contract = contract;
         this.pos = pos;
         this.posPx = posPx;
@@ -43,6 +45,7 @@ public class Position {
         this.contractDetails = other.contractDetails;
         this.expiry = other.expiry;
         this.lastTrade = other.lastTrade;
+        this.selected = other.selected;
     }
 
     public Contract getContract() {
@@ -63,6 +66,10 @@ public class Position {
 
     public Double getVol() {
         return vol;
+    }
+
+    public boolean isSelected() {
+        return selected;
     }
 
     public void updatePosition(IbGateway.ExecDetails m) {
@@ -159,4 +166,10 @@ public class Position {
     public Trade getLastTrade() {
         return lastTrade;
     }
+
+    public void setSelected(boolean selected) {
+        this.selected = selected;
+    }
+
+
 }

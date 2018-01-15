@@ -226,6 +226,12 @@ public class MainController {
         });
     }
 
+    public void onSciptParams(String scriptParam) {
+        Platform.runLater(()->{
+            tfParam.setText(scriptParam);
+        });
+    }
+
     public static final class UpdateUiPositionsBatch {
 
         private final boolean fullUpdate;
@@ -295,6 +301,8 @@ public class MainController {
 
     @PostConstruct
     public void init() {
+        btnStartStop.setStyle("-fx-base: red;");
+
         lblProgress.setText("");
 
         hedgerActor = actorSystem.actorSelection("/user/app/hedger");
@@ -304,6 +312,13 @@ public class MainController {
         );
         colSelected.setCellValueFactory(cellData -> {
             PositionEntry pe = cellData.getValue();
+            pe.selectedProperty().addListener(new ChangeListener() {
+                @Override
+                public void changed(ObservableValue observable, Object oldValue, Object newValue) {
+                    boolean value = (boolean) newValue;
+                    hedgerActor.tell(new HedgerActor.PosSelectionChanged(pe.localSymbolProperty().getValue(), value), null);
+                }
+            });
             return pe.selectedProperty();
         });
 
@@ -567,4 +582,26 @@ public class MainController {
             }
         });
     }
+
+    @FXML
+    private Button btnStartStop;
+
+    private volatile boolean started = false;
+
+    @FXML
+    public void onStartStop() {
+        if (!started) {
+            btnStartStop.setText("Stop");
+            btnStartStop.setStyle("-fx-base: green;");
+        } else {
+            btnStartStop.setText("Start");
+            btnStartStop.setStyle("-fx-base: red;");
+        }
+        started = !started;
+    }
+
+    public boolean isStarted() {
+        return started;
+    }
+
 }

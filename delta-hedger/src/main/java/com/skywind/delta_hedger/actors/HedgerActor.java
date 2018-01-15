@@ -140,6 +140,24 @@ public class HedgerActor extends AbstractActor {
     public static final class RefreshOpenOrders {
     }
 
+    public static final class PosSelectionChanged {
+        private final String localSymbol;
+        private final boolean selected;
+
+        public PosSelectionChanged(String localSymbol, boolean selected) {
+            this.localSymbol = localSymbol;
+            this.selected = selected;
+        }
+
+        public String getLocalSymbol() {
+            return localSymbol;
+        }
+
+        public boolean isSelected() {
+            return selected;
+        }
+    }
+
     public static final class IrChanged {
         private final String localSymbol;
         private final double ir;
@@ -229,6 +247,9 @@ public class HedgerActor extends AbstractActor {
                         onContractDetails(m);
                     }
                 })
+                .match(PosSelectionChanged.class, m -> {
+                    onPosSelectionChanged(m);
+                })
                 .match(IrChanged.class, m -> {
                     onIrChanged(m);
                 })
@@ -307,7 +328,7 @@ public class HedgerActor extends AbstractActor {
 
     // should not be called at all
     private void onErrorWithMessage(IbGateway.ErrorWithMessage m) {
-//        throw new RuntimeException(m.getErrorMsg());
+        throw new RuntimeException(m.getErrorMsg());
     }
 
     // Handles errors generated within the API itself. If an exception is thrown within the API code it will be notified here. Possible cases include errors while reading the information from the socket or even mishandling at EWrapper's implementing class.
@@ -349,7 +370,7 @@ public class HedgerActor extends AbstractActor {
             if (ibConnection) {
                 ibConnection = false;
                 controller.onIbConnection(ibConnection);
-                String message = "Log trader: disconnected from IB";
+                String message = "Options: disconnected from IB";
                 emailActorSelection.tell(new EmailActor.Email(message, message), self());
             }
 
@@ -358,7 +379,7 @@ public class HedgerActor extends AbstractActor {
             if (!ibConnection) {
                 ibConnection = true;
                 controller.onIbConnection(ibConnection);
-                String message = "Log trader: reconnected to IB";
+                String message = "Options: reconnected to IB";
                 emailActorSelection.tell(new EmailActor.Email(message, message), self());
 
                 requestExecutions();
@@ -376,7 +397,7 @@ public class HedgerActor extends AbstractActor {
             refreshTimebars(true);
         }
         if (m.getErrorCode() == 507) {
-            String message = "Log trader: ib socket closed";
+            String message = "Options: ib socket closed";
             emailActorSelection.tell(new EmailActor.Email(message, message), self());
             controller.onApiConnection(false);
             controller.onIbConnection(false);
@@ -485,10 +506,10 @@ public class HedgerActor extends AbstractActor {
             }
             switch (amendmentProcess.getCurrentStage()) {
                 case CANCEL_ORDERS:
-                    if (openOrders.isEmpty()) {
+                    if (openOrders.isEmpty() || !controller.isStarted()) {
                         if (amendmentProcess.isCallPyScript()) {
                             amendmentProcess.setCurrentStage(AmendmentProcess.Stage.CALL_PY_SCRIPT);
-                        } else if (amendmentProcess.isConfirmPlaceOrders()) {
+                        } else if (amendmentProcess.isConfirmPlaceOrders() && controller.isStarted()) {
                             controller.onConfirmOrderPlace();
                             amendmentProcess.setCurrentStage(AmendmentProcess.Stage.WAITING_PLACE_CONFIRMATION);
                         } else if (amendmentProcess.isPlaceOrders()) {
@@ -499,7 +520,9 @@ public class HedgerActor extends AbstractActor {
                         doNextAmendmentProcessStage();
 
                     } else {
-                        cancelAllOrders();
+                        if (controller.isStarted()) {
+                            cancelAllOrders();
+                        }
                         amendmentProcess.setCurrentStage(AmendmentProcess.Stage.WAIT_ALL_ORDERS_CANCELLED);
                     }
                     break;
@@ -508,7 +531,9 @@ public class HedgerActor extends AbstractActor {
                     amendmentProcess.setCurrentStage(AmendmentProcess.Stage.WAIT_PY_SCRIPT_COMPLETION);
                     break;
                 case PLACE_ORDERS:
-                    placeTargetOrders();
+                    if (controller.isStarted()) {
+                        placeTargetOrders();
+                    }
                     amendmentProcess.setCurrentStage(AmendmentProcess.Stage.COMPLETED);
                     break;
             }
@@ -520,8 +545,7 @@ public class HedgerActor extends AbstractActor {
 
     private void cancelAllOrders() {
         for (Integer orderId : openOrders.keySet()) {
-            // TODO: uncomment for real trading
-//            ibGateway.getClientSocket().cancelOrder(orderId);
+            ibGateway.getClientSocket().cancelOrder(orderId);
             amendmentProcess.cancelOrder(orderId);
         }
     }
@@ -574,8 +598,7 @@ public class HedgerActor extends AbstractActor {
         }
         order.totalQuantity(totalQuantity);
         order.account(account);
-        // TODO: uncomment for real trading
-//        ibGateway.getClientSocket().placeOrder(orderId, contract, order);
+        ibGateway.getClientSocket().placeOrder(orderId, contract, order);
         nextOrderId++;
         return orderId;
     }
@@ -595,7 +618,7 @@ public class HedgerActor extends AbstractActor {
             targetOrders = StorageUtils.readTargetOrders(m.getFolder());
             if (amendmentProcess != null) {
                 if (amendmentProcess.getCurrentStage() == AmendmentProcess.Stage.WAIT_PY_SCRIPT_COMPLETION) {
-                    if (amendmentProcess.isConfirmPlaceOrders()) {
+                    if (amendmentProcess.isConfirmPlaceOrders() && controller.isStarted()) {
                         controller.onConfirmOrderPlace();
                         amendmentProcess.setCurrentStage(AmendmentProcess.Stage.WAITING_PLACE_CONFIRMATION);
                     } else if (amendmentProcess.isPlaceOrders()) {
@@ -674,7 +697,7 @@ public class HedgerActor extends AbstractActor {
             Process process = processBuilder.start();
             Thread waitThread = new Thread(() -> {
                 try {
-                    if (process.waitFor(10l, TimeUnit.SECONDS)) {
+                    if (process.waitFor(30l, TimeUnit.SECONDS)) {
                         int exitCode = process.exitValue();
                         self().tell(new PythonScriptResult(actorId, exitCode == 0 ? PythonScriptResult.Result.SUCCESS : PythonScriptResult.Result.FAILURE, DATA_FOLDER), self());
                     } else {
@@ -694,6 +717,9 @@ public class HedgerActor extends AbstractActor {
     }
 
     private void onRunAmendmentProcess(RunAmendmentProcess m) {
+        if (amendmentProcess != null && !amendmentProcess.isCompleted()) {
+            return;
+        }
         amendmentProcess = new AmendmentProcess(m, controller.isCancelOrders(), controller.isRunPython(), controller.isPlaceOrders(), m.isConfirmPlaceOrders());
         doNextAmendmentProcessStage();
     }
@@ -887,7 +913,7 @@ public class HedgerActor extends AbstractActor {
                     Contract c = m.getContract();
                     double pos = Utils.getPosition(m);
                     double posPx = m.getExecution().price();
-                    p = new Position(c, pos, posPx, 0.0d, 0.0d, trade);
+                    p = new Position(false, c, pos, posPx, 0.0d, 0.0d, trade);
                 }
 
                 if (p.isZero()) {
@@ -1229,14 +1255,16 @@ public class HedgerActor extends AbstractActor {
                 if (!positions.containsKey(localSymbol)) {
                     double vol = 0.0d;
                     double ir = 0.0d;
+                    boolean selected = false;
                     Trade lastTrade = null;
                     if (oldPositions.containsKey(localSymbol)) {
                         Position oldPosition = oldPositions.get(localSymbol);
                         vol = oldPosition.getVol();
                         ir = oldPosition.getIr();
+                        selected = oldPosition.isSelected();
                         lastTrade = oldPosition.getLastTrade();
                     }
-                    Position p = new Position(c, pm.getPosition(), pm.getPositionPrice() / Double.parseDouble(pm.getContract().multiplier()), vol, ir, lastTrade);
+                    Position p = new Position(selected, c, pm.getPosition(), pm.getPositionPrice() / Double.parseDouble(pm.getContract().multiplier()), vol, ir, lastTrade);
                     positions.put(localSymbol, p);
                     uiUpdates.addAction(MainController.UpdateUiPositionsBatch.Action.UPDATE, localSymbol, p);
                 }
@@ -1248,6 +1276,14 @@ public class HedgerActor extends AbstractActor {
         onPositionsUpdate();
         controller.onPositionsUpdate(uiUpdates);
         controller.onPositionsReloadComplete();
+    }
+
+    private void onPosSelectionChanged(PosSelectionChanged m) {
+        if (positions.containsKey(m.localSymbol)) {
+            Position p = positions.get(m.localSymbol);
+            p.setSelected(m.selected);
+            StorageUtils.storePositions(positions);
+        }
     }
 
     private void onIrChanged(IrChanged m) {

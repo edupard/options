@@ -76,6 +76,7 @@ public class PositionEntry {
         posPx.set(p.getPosPx());
         ir.set(p.getIr());
         vol.set(p.getVol());
+        selected.set(p.isSelected());
 
         if (p.getLastTrade() != null) {
             lastPos.set(String.format("%.0f", p.getLastTrade().getPos()));

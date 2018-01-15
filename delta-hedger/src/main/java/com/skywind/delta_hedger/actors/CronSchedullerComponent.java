@@ -2,6 +2,7 @@ package com.skywind.delta_hedger.actors;
 
 import akka.actor.ActorSelection;
 import akka.actor.ActorSystem;
+import com.skywind.delta_hedger.ui.MainController;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.env.Environment;
@@ -30,6 +31,9 @@ public class CronSchedullerComponent implements SchedulingConfigurer {
 
     @Autowired
     private ActorSystem actorSystem;
+
+    @Autowired
+    private MainController controller;
 
     private ActorSelection hedgerActor;
 
@@ -67,8 +71,10 @@ public class CronSchedullerComponent implements SchedulingConfigurer {
     @Override
     public void configureTasks(ScheduledTaskRegistrar taskRegistrar) {
         for (CronTaskConfig c : cronTasks) {
-            CronTask ct = new CronTask(
+            CronTask ct;
+            ct = new CronTask(
                     ()-> {
+                        controller.onSciptParams(c.scriptParam);
                         hedgerActor.tell(new HedgerActor.RunAmendmentProcess(c.scriptParam, false), null);
                         },
                     c.schedule);

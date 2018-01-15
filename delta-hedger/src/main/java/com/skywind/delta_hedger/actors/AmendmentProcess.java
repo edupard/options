@@ -44,6 +44,7 @@ public class AmendmentProcess {
         COMPLETED,
         CANCELLED,
         FAILED,
+        TIMEOUT
     }
 
     private Stage currentStage;
@@ -100,5 +101,12 @@ public class AmendmentProcess {
 
     public void setCurrentStage(Stage currentStage) {
         this.currentStage = currentStage;
+    }
+
+    public boolean isCompleted() {
+        return currentStage == Stage.FAILED ||
+        currentStage == Stage.CANCELLED ||
+        currentStage == Stage.COMPLETED ||
+        currentStage == Stage.TIMEOUT;
     }
 }
