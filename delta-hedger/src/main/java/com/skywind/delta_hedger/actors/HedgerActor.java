@@ -904,7 +904,7 @@ public class HedgerActor extends AbstractActor {
             StorageUtils.storeTrade(m);
 
             if ((controller.isIncludeFutures() && m.getContract().secType() == Types.SecType.FUT)
-                    || (controller.isIncludeOptions() && m.getContract().secType() == Types.SecType.OPT)) {
+                    || (controller.isIncludeOptions() && m.getContract().secType() == Types.SecType.FOP)) {
                 if (positions.containsKey(localSymbol)) {
                     p = positions.get(localSymbol);
                     p.updatePosition(m);
@@ -1174,7 +1174,7 @@ public class HedgerActor extends AbstractActor {
             Position p = e.getValue();
             if (p.getContract().secType() == Types.SecType.FUT) {
                 requests.add(new TimeBarRequest(localSymbol, "4 hours"));
-            } else if (p.getContract().secType() == Types.SecType.OPT) {
+            } else if (p.getContract().secType() == Types.SecType.FOP) {
                 if (p.isContractDetailsDefined()) {
                     requests.add(new TimeBarRequest(p.getContractDetails().underSymbol(), "4 hours"));
                 }
