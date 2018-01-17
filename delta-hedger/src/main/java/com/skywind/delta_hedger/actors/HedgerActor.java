@@ -488,7 +488,13 @@ public class HedgerActor extends AbstractActor {
     private void onPlaceConfirmation(PlaceConfirmation m) {
         if (amendmentProcess != null) {
             if (amendmentProcess.getCurrentStage() == AmendmentProcess.Stage.WAITING_PLACE_CONFIRMATION) {
-                amendmentProcess.setCurrentStage(AmendmentProcess.Stage.PLACE_ORDERS);
+                if (m.isProceed()) {
+                    amendmentProcess.setCurrentStage(AmendmentProcess.Stage.PLACE_ORDERS);
+
+                }
+                else {
+                    amendmentProcess.setCurrentStage(AmendmentProcess.Stage.COMPLETED);
+                }
                 controller.onProgress(amendmentProcess.getCurrentStage());
                 doNextAmendmentProcessStage();
             }
@@ -550,16 +556,18 @@ public class HedgerActor extends AbstractActor {
         }
     }
 
+
     private void placeTargetOrders() {
         Set<String> futCodes = targetOrders.stream().map(TargetOrder::getCode).collect(Collectors.toSet());
         for (String code : futCodes) {
             TimeBarRequest r = new TimeBarRequest(code, "4 hours");
             TimebarArray timebarArray = currentBars.get(r);
             double currentPx = timebarArray.getLastPx();
-            // TODO: what if price absent
             List<TargetOrder> sortedOrders = targetOrders.stream().filter((to) -> to.getCode().equals(code)).sorted(Comparator.comparing((to) -> Math.abs(to.getPx() - currentPx))).collect(Collectors.toList());
             for (TargetOrder to : sortedOrders) {
-                amendmentProcess.placeOrder(placeTargetOrder(to));
+                if (Math.abs(to.getQty()) >= Position.ZERO_POS_TRESHOLD) {
+                    amendmentProcess.placeOrder(placeTargetOrder(to));
+                }
             }
         }
     }
@@ -584,10 +592,10 @@ public class HedgerActor extends AbstractActor {
                 ot = OrderType.MKT;
                 break;
         }
-        return placeOrderImpl(contract, to.getQty() > 0 ? Types.Action.BUY : Types.Action.SELL, Math.abs(to.getQty()), ot);
+        return placeOrderImpl(contract, to.getQty() > 0 ? Types.Action.BUY : Types.Action.SELL, Math.abs(to.getQty()), PriceUtils.convertPrice(to.getViewPx(), futPriceCoeff), ot);
     }
 
-    public int placeOrderImpl(Contract contract, Types.Action action, double totalQuantity, OrderType orderType) {
+    public int placeOrderImpl(Contract contract, Types.Action action, double totalQuantity, double px, OrderType orderType) {
         int orderId = nextOrderId;
         Order order = new Order();
         order.action(action);
@@ -595,6 +603,7 @@ public class HedgerActor extends AbstractActor {
         if (orderType == OrderType.STP) {
             order.outsideRth(true);
             order.tif(Types.TimeInForce.GTC);
+            order.auxPrice(px);
         }
         order.totalQuantity(totalQuantity);
         order.account(account);
@@ -742,9 +751,6 @@ public class HedgerActor extends AbstractActor {
         if (!m.getOrder().account().equals(account)) {
             return;
         }
-        if (m.getOrder().orderType() != OrderType.STP) {
-            return;
-        }
         if (!includeManualOrders && m.getOrderId() < 0) {
             return;
         }
@@ -807,9 +813,9 @@ public class HedgerActor extends AbstractActor {
                     if (orderStatus == OrderStatus.Inactive) {
                         String message = "Options: order rejected";
                         emailActorSelection.tell(new EmailActor.Email(message, message), self());
+                        amendmentProcess.setCurrentStage(AmendmentProcess.Stage.FAILED);
+                        controller.onProgress(amendmentProcess.getCurrentStage());
                     }
-                    amendmentProcess.setCurrentStage(AmendmentProcess.Stage.FAILED);
-                    controller.onProgress(amendmentProcess.getCurrentStage());
                 }
                 if (amendmentProcess.isCancelledOrder(m.getOrderId())) {
                     if (orderStatus == OrderStatus.Cancelled) {

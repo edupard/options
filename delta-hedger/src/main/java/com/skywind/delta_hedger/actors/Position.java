@@ -88,7 +88,7 @@ public class Position {
         }
     }
 
-    private static final double ZERO_POS_TRESHOLD = 1e-6;
+    public static final double ZERO_POS_TRESHOLD = 1e-6;
 
     public boolean isZero() {
         return Math.abs(this.pos) < ZERO_POS_TRESHOLD;

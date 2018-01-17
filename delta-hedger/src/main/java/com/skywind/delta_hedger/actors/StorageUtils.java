@@ -119,13 +119,17 @@ public class StorageUtils {
         try (CSVPrinter writer = new CSVPrinter(new FileWriter(positionsFileName, false), CSV_INPUT_POSITIONS_FORMAT)) {
             for (Map.Entry<String, Position> entry : positionsByLocalSymbol.entrySet()) {
                 Position pi = entry.getValue();
+                if (!pi.isSelected())
+                {
+                    continue;
+                }
 
                 //Check contract details and expiry
                 writer.printRecord(
                         pi.getContract().localSymbol(),
-                        pi.getContractDetails().underSymbol(),
+                        pi.getContractDetails() == null ? "" : pi.getContractDetails().underSymbol(),
                         pi.getContract().secType(),
-                        TIME_FMT.format(pi.getExpiry()),
+                        pi.getExpiry() == null ? "" : TIME_FMT.format(pi.getExpiry()),
                         pi.getContract().strike(),
                         pi.getContract().right(),
                         pi.getContract().multiplier(),
