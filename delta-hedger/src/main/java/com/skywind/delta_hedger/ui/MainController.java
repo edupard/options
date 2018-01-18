@@ -238,14 +238,6 @@ public class MainController {
         });
     }
 
-    public void onRefreshDaysToExpiration() {
-        Platform.runLater(()->{
-            for (PositionEntry pe : positionsData) {
-                pe.updateUi(pe.getPosition());
-            }
-        });
-    }
-
     public void onPortfolioResult(HedgerActor.PortfolioResult result) {
         Platform.runLater(()->{
             if (result == HedgerActor.PortfolioResult.SUCCESS) {

@@ -13,10 +13,10 @@ public class Utils {
         String secType = "U";
         if (c.secType() == Types.SecType.FOP) {
             if (c.right() == Types.Right.Call) {
-                secType = "P";
+                secType = "C";
             }
             else if (c.right()== Types.Right.Put) {
-                secType = "C";
+                secType = "P";
             }
         }
         else if (c.secType()== Types.SecType.FUT)

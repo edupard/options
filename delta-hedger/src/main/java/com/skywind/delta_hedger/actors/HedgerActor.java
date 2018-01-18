@@ -334,8 +334,11 @@ public class HedgerActor extends AbstractActor {
     }
 
     private void onRefreshDaysToExpiration(RefreshDaysToExpiration m) {
-        controller.onRefreshDaysToExpiration();
-
+        MainController.UpdateUiPositionsBatch uiUpdates = new MainController.UpdateUiPositionsBatch(false);
+        for (Map.Entry<String, Position> e : positions.entrySet()) {
+            uiUpdates.addAction(MainController.UpdateUiPositionsBatch.Action.UPDATE, e.getKey(), e.getValue());
+        }
+        controller.onPositionsUpdate(uiUpdates);
     }
 
 
@@ -530,8 +533,7 @@ public class HedgerActor extends AbstractActor {
                         amendmentProcess.setCurrentStage(AmendmentProcess.Stage.COMPLETED);
                     }
                 }
-            }
-            finally {
+            } finally {
                 doNextAmendmentProcessStage();
             }
         }
@@ -573,8 +575,7 @@ public class HedgerActor extends AbstractActor {
                         if (controller.isStarted()) {
                             controller.onConfirmOrderPlace();
                             amendmentProcess.setCurrentStage(AmendmentProcess.Stage.WAITING_PLACE_CONFIRMATION);
-                        }
-                        else {
+                        } else {
                             amendmentProcess.setCurrentStage(AmendmentProcess.Stage.COMPLETED);
                         }
                         break;
@@ -592,12 +593,10 @@ public class HedgerActor extends AbstractActor {
                             if (to != null) {
                                 amendmentProcess.placeOrder(placeTargetOrder(to));
                                 amendmentProcess.setCurrentStage(AmendmentProcess.Stage.WAIT_TARGET_ORDER_STATE);
-                            }
-                            else {
+                            } else {
                                 amendmentProcess.setCurrentStage(AmendmentProcess.Stage.COMPLETED);
                             }
-                        }
-                        else {
+                        } else {
                             amendmentProcess.setCurrentStage(AmendmentProcess.Stage.COMPLETED);
                         }
                         break;
@@ -692,11 +691,9 @@ public class HedgerActor extends AbstractActor {
             try {
                 if (m.getResult() == PythonScriptResult.Result.FAILURE) {
                     amendmentProcess.setCurrentStage(AmendmentProcess.Stage.FAILED);
-                }
-                else if (m.getResult() == PythonScriptResult.Result.TIMEOUT) {
+                } else if (m.getResult() == PythonScriptResult.Result.TIMEOUT) {
                     amendmentProcess.setCurrentStage(AmendmentProcess.Stage.TIMEOUT);
-                }
-                else if (m.getResult() == PythonScriptResult.Result.SUCCESS) {
+                } else if (m.getResult() == PythonScriptResult.Result.SUCCESS) {
                     if (amendmentProcess.getCurrentStage() == AmendmentProcess.Stage.WAIT_PY_SCRIPT_COMPLETION) {
                         try {
                             targetOrders = StorageUtils.readTargetOrders(m.getFolder());
@@ -708,8 +705,7 @@ public class HedgerActor extends AbstractActor {
                             } else {
                                 amendmentProcess.setCurrentStage(AmendmentProcess.Stage.COMPLETED);
                             }
-                        }
-                        catch (Throwable t) {
+                        } catch (Throwable t) {
                             String message = String.format("Options: can not read python script result %s %s", m.getResult().toString(), m.getFolder());
                             emailActorSelection.tell(new EmailActor.Email(message, message), self());
                             amendmentProcess.setCurrentStage(AmendmentProcess.Stage.FAILED);
@@ -717,8 +713,7 @@ public class HedgerActor extends AbstractActor {
                         }
                     }
                 }
-            }
-            finally {
+            } finally {
                 doNextAmendmentProcessStage();
             }
         }
@@ -838,8 +833,6 @@ public class HedgerActor extends AbstractActor {
         processPendingAmendmentProcessQueue();
     }
 
-    private boolean includeManualOrders = false;
-
     private void processPendingAmendmentProcessQueue() {
         if (amendmentProcess != null && !amendmentProcess.isFinished()) {
             return;
@@ -857,7 +850,6 @@ public class HedgerActor extends AbstractActor {
 
     private void getOpenOrders() {
         openOrders.clear();
-        includeManualOrders = controller.isIncludeManualOrders();
         ibGateway.getClientSocket().reqOpenOrders();
     }
 
@@ -868,66 +860,79 @@ public class HedgerActor extends AbstractActor {
     private Map<Integer, HedgerOrder> openOrders = new HashMap<>();
 
     private void onOpenOrder(IbGateway.OpenOrder m) {
-        if (!m.getOrder().account().equals(account)) {
-            return;
-        }
-        if (!includeManualOrders && m.getOrderId() <= 0) {
-            return;
-        }
-        String localSymbol = m.getContract().localSymbol();
-        int orderId = m.getOrderId();
-        HedgerOrder.Side orderSide = HedgerOrder.Side.BUY;
-        switch (m.getOrder().action()) {
-            case BUY:
-                orderSide = HedgerOrder.Side.BUY;
-                break;
-            case SELL:
-            case SSHORT:
-                orderSide = HedgerOrder.Side.SELL;
-                break;
-        }
-        HedgerOrder.State orderState = HedgerOrder.State.ACTIVE;
-        switch (m.getOrderState().status()) {
-            case Cancelled:
-            case ApiCancelled:
-            case PendingCancel:
-                orderState = HedgerOrder.State.CANCELLED;
-                break;
-            case Filled:
-                orderState = HedgerOrder.State.FILLED;
-                break;
-            case Inactive:
-                orderState = HedgerOrder.State.REJECTED;
-                break;
-        }
-        double px = 0.0d;
-        switch (m.getOrder().orderType()) {
-            case LMT:
-                px = m.getOrder().lmtPrice();
-                break;
-            case STP:
-                px = m.getOrder().auxPrice();
-                break;
-        }
+        try {
+            if (!m.getOrder().account().equals(account)) {
+                return;
+            }
+            if (m.getOrderId() == 0) {
+                getOpenOrders();
+                return;
+            }
+            if (!underlyingsFilter.contains(m.getContract().symbol())) {
+                return;
+            }
+            if (!controller.isIncludeManualOrders() && m.getOrderId() <= 0) {
+                return;
+            }
+            String localSymbol = m.getContract().localSymbol();
+            int orderId = m.getOrderId();
+            HedgerOrder.Side orderSide = HedgerOrder.Side.BUY;
+            switch (m.getOrder().action()) {
+                case BUY:
+                    orderSide = HedgerOrder.Side.BUY;
+                    break;
+                case SELL:
+                case SSHORT:
+                    orderSide = HedgerOrder.Side.SELL;
+                    break;
+            }
+            HedgerOrder.State orderState = HedgerOrder.State.ACTIVE;
+            switch (m.getOrderState().status()) {
+                case Cancelled:
+                case ApiCancelled:
+                case PendingCancel:
+                    orderState = HedgerOrder.State.CANCELLED;
+                    break;
+                case Filled:
+                    orderState = HedgerOrder.State.FILLED;
+                    break;
+                case Inactive:
+                    orderState = HedgerOrder.State.REJECTED;
+                    break;
+            }
+            double px = 0.0d;
+            switch (m.getOrder().orderType()) {
+                case LMT:
+                    px = m.getOrder().lmtPrice();
+                    break;
+                case STP:
+                    px = m.getOrder().auxPrice();
+                    break;
+            }
 
-        double qty = m.getOrder().totalQuantity();
+            double qty = m.getOrder().totalQuantity();
 
-        HedgerOrder ho = new HedgerOrder(localSymbol,
-                orderId,
-                orderSide,
-                orderState,
-                qty,
-                px,
-                PriceUtils.convertPrice(px, futPriceCoeff));
-        if (!openOrders.containsKey(orderId)) {
-            openOrders.put(orderId, ho);
-        }
-        if (ho.isTerminalState()) {
-            openOrders.remove(orderId);
+            HedgerOrder ho = new HedgerOrder(localSymbol,
+                    orderId,
+                    orderSide,
+                    orderState,
+                    qty,
+                    px,
+                    PriceUtils.convertPrice(px, futPriceCoeff));
+            if (!openOrders.containsKey(orderId)) {
+                openOrders.put(orderId, ho);
+            }
+            if (ho.isTerminalState()) {
+                openOrders.remove(orderId);
+            }
+        } finally {
+            List<HedgerOrder> oo = openOrders.values().stream().map((ho) -> new HedgerOrder(ho)).collect(Collectors.toList());
+            controller.onOpenOrders(oo);
         }
     }
 
     private static final Set<OrderStatus> acceptedOrderStatuses = new HashSet<>();
+
     static {
         acceptedOrderStatuses.add(OrderStatus.Submitted);
         acceptedOrderStatuses.add(OrderStatus.PreSubmitted);
@@ -941,7 +946,7 @@ public class HedgerActor extends AbstractActor {
             if (m.getClientId() != clientId) {
                 return;
             }
-            if (!includeManualOrders && m.getOrderId() < 0) {
+            if (!controller.isIncludeManualOrders() && m.getOrderId() < 0) {
                 return;
             }
             OrderStatus orderStatus = OrderStatus.get(m.getStatus());
@@ -953,8 +958,7 @@ public class HedgerActor extends AbstractActor {
                             String message = "Options: order rejected";
                             emailActorSelection.tell(new EmailActor.Email(message, message), self());
                             amendmentProcess.setCurrentStage(AmendmentProcess.Stage.FAILED);
-                        }
-                        else if (acceptedOrderStatuses.contains(orderStatus)) {
+                        } else if (acceptedOrderStatuses.contains(orderStatus)) {
                             amendmentProcess.setCurrentStage(AmendmentProcess.Stage.PLACE_NEXT_TARGET_ORDER);
                         }
                     }
@@ -976,8 +980,7 @@ public class HedgerActor extends AbstractActor {
                             }
                         }
                     }
-                }
-                finally {
+                } finally {
                     doNextAmendmentProcessStage();
                 }
             }

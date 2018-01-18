@@ -66,7 +66,7 @@ public class CronSchedullerComponent implements SchedulingConfigurer {
                 break;
             }
             String scriptParams = env.getProperty(String.format("cron.task.%d.param", i));
-            boolean triggerOnTrade = Boolean.parseBoolean(env.getProperty(String.format("cron.task.%d.trigger_on_trade", i)));
+            boolean triggerOnTrade = Boolean.parseBoolean(env.getProperty(String.format("cron.task.%d.trigger", i)));
 
             cronTasks.add(new CronTaskConfig(schedule, scriptParams, triggerOnTrade));
         }

@@ -67,6 +67,7 @@ public class HedgerOrder {
         this.outstandingQty = other.outstandingQty;
         this.remainingQty = other.remainingQty;
         this.px = other.px;
+        this.viewPx = other.viewPx;
     }
 
     private static final double ZERO_POS_TRESHOLD = 1e-6;
