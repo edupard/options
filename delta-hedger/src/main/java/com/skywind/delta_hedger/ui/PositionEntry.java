@@ -1,6 +1,7 @@
 package com.skywind.delta_hedger.ui;
 
 import com.ib.client.ContractDetails;
+import com.ib.client.Types;
 import com.skywind.delta_hedger.actors.Position;
 import com.skywind.ib.Utils;
 import javafx.beans.property.*;
@@ -27,6 +28,8 @@ public class PositionEntry {
     private final StringProperty lastPos;
     private final StringProperty lastTime;
 
+    private Position position;
+
     public PositionEntry() {
         this.selected = new SimpleBooleanProperty(true);
         this.localSymbol = new SimpleStringProperty();
@@ -50,7 +53,12 @@ public class PositionEntry {
 
     private static final double SECONDS_PER_DAY = 86400;
 
+    public Position getPosition() {
+        return position;
+    }
+
     public void updateUi(Position p) {
+        this.position = p;
         localSymbol.set(p.getContract().localSymbol());
         if (p.isContractDetailsDefined()) {
             ContractDetails cd = p.getContractDetails();
@@ -138,5 +146,17 @@ public class PositionEntry {
 
     public StringProperty lastTimeProperty() {
         return lastTime;
+    }
+
+    private static final String HIGHLIGHT_COLOR = "lightcoral";
+
+    public String getSymbolCssColor() {
+        boolean highlight = false;
+        if (position != null) {
+            if (position.getVol() == 0.0d && position.getContract().secType() == Types.SecType.FOP) {
+                return HIGHLIGHT_COLOR;
+            }
+        }
+        return null;
     }
 }

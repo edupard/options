@@ -4,6 +4,7 @@ import akka.actor.ActorSelection;
 import akka.actor.ActorSystem;
 import com.skywind.delta_hedger.actors.*;
 import com.skywind.spring_javafx_integration.ui.FormatedCellFactory;
+import com.skywind.spring_javafx_integration.ui.MagicTableCell;
 import javafx.application.Platform;
 import javafx.beans.value.ObservableValue;
 import javafx.collections.FXCollections;
@@ -18,13 +19,16 @@ import javafx.scene.control.cell.TextFieldTableCell;
 import javafx.scene.layout.AnchorPane;
 import javafx.beans.value.ChangeListener;
 import javafx.scene.paint.Color;
+import javafx.util.Callback;
 import javafx.util.StringConverter;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.ConfigurableApplicationContext;
 
 import javax.annotation.PostConstruct;
 import java.util.*;
+import java.util.function.Function;
 
 public class MainController {
     @Autowired
@@ -45,6 +49,9 @@ public class MainController {
 
     @FXML
     private Label lblProgress;
+
+    @FXML
+    private Label lblAccount;
 
     @FXML
     private TableView<PositionEntry> tblPositions;
@@ -231,6 +238,28 @@ public class MainController {
         });
     }
 
+    public void onRefreshDaysToExpiration() {
+        Platform.runLater(()->{
+            for (PositionEntry pe : positionsData) {
+                pe.updateUi(pe.getPosition());
+            }
+        });
+    }
+
+    public void onPortfolioResult(HedgerActor.PortfolioResult result) {
+        Platform.runLater(()->{
+            if (result == HedgerActor.PortfolioResult.SUCCESS) {
+                return;
+            }
+            Alert alert = new Alert(Alert.AlertType.ERROR);
+            alert.setTitle("Show portfolio");
+            alert.setContentText(result.toString());
+            alert.show();
+        });
+    }
+
+
+
     public static final class UpdateUiPositionsBatch {
 
         private final boolean fullUpdate;
@@ -297,9 +326,13 @@ public class MainController {
         }
     }
 
+    @Value("${account}")
+    private String account;
 
     @PostConstruct
     public void init() {
+        lblAccount.setText(String.format("account: %s", account));
+
         btnStartStop.setStyle("-fx-base: red;");
 
         lblProgress.setText("");
@@ -322,6 +355,15 @@ public class MainController {
         });
 
         colCode.setCellValueFactory(cellData -> cellData.getValue().localSymbolProperty());
+        colCode.setCellFactory(c -> {
+            MagicTableCell cell = new MagicTableCell<>();
+            Function<PositionEntry, String> colorSupplier = item -> item.getSymbolCssColor();
+            cell.setColorSupplier(colorSupplier);
+            return cell;
+        });
+
+
+
         colUnderCode.setCellValueFactory(cellData -> cellData.getValue().underLocalSymbolProperty());
         colExpiry.setCellValueFactory(cellData -> cellData.getValue().expiryProperty());
 
@@ -563,6 +605,26 @@ public class MainController {
         return triggerOnTrade;
     }
 
+    public void changeTriggerOnTrade(boolean triggerOnTrade) {
+        this.triggerOnTrade = triggerOnTrade;
+        Platform.runLater(()->{
+            cbTriggerOnTrade.setSelected(triggerOnTrade);
+        });
+    }
+
+    @FXML
+    private CheckBox cbConfirmPlace;
+
+    private volatile boolean confirmPlace = false;
+
+    public void onConfirmPlaceChanged() {
+        confirmPlace = cbConfirmPlace.isSelected();
+    }
+
+    public boolean isConfirmPlace() {
+        return confirmPlace;
+    }
+
     @FXML
     private TextField tfParam;
 
@@ -592,9 +654,6 @@ public class MainController {
                     break;
                 case FAILED:
                     lblProgress.setTextFill(Color.RED);
-                    break;
-                case CANCELLED:
-                    lblProgress.setTextFill(Color.ORANGE);
                     break;
             }
         });

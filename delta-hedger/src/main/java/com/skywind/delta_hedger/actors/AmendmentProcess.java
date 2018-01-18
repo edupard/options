@@ -1,18 +1,24 @@
 package com.skywind.delta_hedger.actors;
 
 import java.util.HashSet;
+import java.util.LinkedList;
+import java.util.List;
 import java.util.Set;
 
 public class AmendmentProcess {
 
-    private final Set<Integer> placedOrder = new HashSet<>();
+    private Integer placedOrder = null;
+    private LinkedList<TargetOrder> targetOrderQueue;
 
     public void placeOrder(int orderId) {
-        placedOrder.add(orderId);
+        placedOrder = orderId;
     }
 
     public boolean isPlacedOrder(int orderId) {
-        return placedOrder.contains(orderId);
+        if (placedOrder != null) {
+            return placedOrder == orderId;
+        }
+        return false;
     }
 
     private final Set<Integer> cancelledOrders = new HashSet<>();
@@ -33,16 +39,31 @@ public class AmendmentProcess {
         return cancelledOrders.isEmpty();
     }
 
+    public void setTargetOrderQueue(List<TargetOrder> targetOrderQueue) {
+        this.targetOrderQueue = new LinkedList<>(targetOrderQueue);
+    }
+
+    public TargetOrder getNextTargetOrder() {
+        if (targetOrderQueue != null) {
+            if (!targetOrderQueue.isEmpty()) {
+                return targetOrderQueue.pollFirst();
+            }
+        }
+        return null;
+    }
+
 
     public enum Stage {
         CANCEL_ORDERS,
         WAIT_ALL_ORDERS_CANCELLED,
         CALL_PY_SCRIPT,
         WAIT_PY_SCRIPT_COMPLETION,
+        SHOW_PLACE_CONFIRMATION,
         WAITING_PLACE_CONFIRMATION,
         PLACE_ORDERS,
+        PLACE_NEXT_TARGET_ORDER,
+        WAIT_TARGET_ORDER_STATE,
         COMPLETED,
-        CANCELLED,
         FAILED,
         TIMEOUT
     }
@@ -103,9 +124,8 @@ public class AmendmentProcess {
         this.currentStage = currentStage;
     }
 
-    public boolean isCompleted() {
+    public boolean isFinished() {
         return currentStage == Stage.FAILED ||
-        currentStage == Stage.CANCELLED ||
         currentStage == Stage.COMPLETED ||
         currentStage == Stage.TIMEOUT;
     }

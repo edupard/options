@@ -16,6 +16,7 @@ import org.springframework.scheduling.support.CronTrigger;
 import org.springframework.stereotype.Component;
 
 import javax.annotation.PostConstruct;
+import javax.swing.text.StyledEditorKit;
 import java.util.Date;
 import java.util.LinkedList;
 import java.util.List;
@@ -47,22 +48,27 @@ public class CronSchedullerComponent implements SchedulingConfigurer {
     private final static class CronTaskConfig {
         private final String schedule;
         private final String scriptParam;
+        private final boolean triggerOnTrade;
 
-        public CronTaskConfig(String schedule, String scriptParam) {
+        public CronTaskConfig(String schedule, String scriptParam, boolean triggerOnTrade) {
             this.schedule = schedule;
             this.scriptParam = scriptParam;
+            this.triggerOnTrade = triggerOnTrade;
         }
     }
 
     @PostConstruct
     public void postConstruct() {
-        for (int i =0; i < 100; ++i) {
-            String schedule = env.getProperty(String.format("cron.task.%d", i),DEFAULT_VALUE);
-            String scriptParams = env.getProperty(String.format("cron.task.%d.param", i),DEFAULT_VALUE);
+        for (int i = 0; i < 100; ++i) {
+            String schedule = env.getProperty(String.format("cron.task.%d", i), DEFAULT_VALUE);
+
             if (schedule.equals(DEFAULT_VALUE)) {
                 break;
             }
-            cronTasks.add(new CronTaskConfig(schedule, scriptParams));
+            String scriptParams = env.getProperty(String.format("cron.task.%d.param", i));
+            boolean triggerOnTrade = Boolean.parseBoolean(env.getProperty(String.format("cron.task.%d.trigger_on_trade", i)));
+
+            cronTasks.add(new CronTaskConfig(schedule, scriptParams, triggerOnTrade));
         }
 
         hedgerActor = actorSystem.actorSelection("/user/app/hedger");
@@ -73,10 +79,11 @@ public class CronSchedullerComponent implements SchedulingConfigurer {
         for (CronTaskConfig c : cronTasks) {
             CronTask ct;
             ct = new CronTask(
-                    ()-> {
+                    () -> {
                         controller.onSciptParams(c.scriptParam);
                         hedgerActor.tell(new HedgerActor.RunAmendmentProcess(c.scriptParam, false), null);
-                        },
+                        controller.changeTriggerOnTrade(c.triggerOnTrade);
+                    },
                     c.schedule);
             taskRegistrar.scheduleCronTask(ct);
         }
