@@ -64,8 +64,9 @@ public class AmendmentProcess {
         PLACE_NEXT_TARGET_ORDER,
         WAIT_TARGET_ORDER_STATE,
         COMPLETED,
-        FAILED,
-        TIMEOUT
+        ORDER_REJECTED,
+        PYTHON_FAILED,
+        PYTHON_TIMEOUT
     }
 
     private Stage currentStage;
@@ -105,12 +106,10 @@ public class AmendmentProcess {
         currentStage = Stage.COMPLETED;
         if (cancelOrders) {
             currentStage = Stage.CANCEL_ORDERS;
-        }
-        else {
+        } else {
             if (callPyScript) {
                 currentStage = Stage.CALL_PY_SCRIPT;
-            }
-            else {
+            } else {
                 currentStage = Stage.PLACE_ORDERS;
             }
         }
@@ -125,8 +124,9 @@ public class AmendmentProcess {
     }
 
     public boolean isFinished() {
-        return currentStage == Stage.FAILED ||
-        currentStage == Stage.COMPLETED ||
-        currentStage == Stage.TIMEOUT;
+        return currentStage == Stage.PYTHON_FAILED ||
+                currentStage == Stage.ORDER_REJECTED ||
+                currentStage == Stage.COMPLETED ||
+                currentStage == Stage.PYTHON_TIMEOUT;
     }
 }

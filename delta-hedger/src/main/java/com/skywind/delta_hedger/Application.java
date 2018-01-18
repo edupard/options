@@ -15,6 +15,7 @@ import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
 import org.springframework.context.annotation.ComponentScan;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
+import org.springframework.context.annotation.PropertySource;
 
 /**
  *
@@ -27,6 +28,7 @@ import org.springframework.context.annotation.Import;
         AkkaConfiguration.class,
         ActorsConfiguration.class
 })
+@PropertySource(value = "file:user.properties", ignoreResourceNotFound = true)
 public class Application extends AbstractJavaFxApplicationSupport {
 
     @Autowired

@@ -4,7 +4,6 @@ import akka.actor.ActorSelection;
 import akka.actor.ActorSystem;
 import com.skywind.delta_hedger.actors.*;
 import com.skywind.spring_javafx_integration.ui.FormatedCellFactory;
-import com.skywind.spring_javafx_integration.ui.MagicTableCell;
 import javafx.application.Platform;
 import javafx.beans.value.ObservableValue;
 import javafx.collections.FXCollections;
@@ -19,16 +18,19 @@ import javafx.scene.control.cell.TextFieldTableCell;
 import javafx.scene.layout.AnchorPane;
 import javafx.beans.value.ChangeListener;
 import javafx.scene.paint.Color;
-import javafx.util.Callback;
 import javafx.util.StringConverter;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.ConfigurableApplicationContext;
+import org.springframework.util.DefaultPropertiesPersister;
 
 import javax.annotation.PostConstruct;
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.OutputStream;
 import java.util.*;
-import java.util.function.Function;
+
 
 public class MainController {
     @Autowired
@@ -321,8 +323,17 @@ public class MainController {
     @Value("${account}")
     private String account;
 
+    @Value("${script.params:BASIC}")
+    private String scriptParams;
+
     @PostConstruct
     public void init() {
+        tfParam.setText(scriptParams);
+        tfParam.textProperty().addListener((observable, oldValue, newValue) -> {
+            saveApplicationProperties();
+        });
+
+        lblVolMissing.setText("");
         lblAccount.setText(String.format("account: %s", account));
 
         btnStartStop.setStyle("-fx-base: red;");
@@ -347,12 +358,12 @@ public class MainController {
         });
 
         colCode.setCellValueFactory(cellData -> cellData.getValue().localSymbolProperty());
-        colCode.setCellFactory(c -> {
-            MagicTableCell cell = new MagicTableCell<>();
-            Function<PositionEntry, String> colorSupplier = item -> item.getSymbolCssColor();
-            cell.setColorSupplier(colorSupplier);
-            return cell;
-        });
+//        colCode.setCellFactory(c -> {
+//            MagicTableCell cell = new MagicTableCell<>();
+//            Function<PositionEntry, String> colorSupplier = item -> item.getSymbolCssColor();
+//            cell.setColorSupplier(colorSupplier);
+//            return cell;
+//        });
 
 
 
@@ -392,6 +403,7 @@ public class MainController {
                 @Override
                 public void changed(ObservableValue observable, Object oldValue, Object newValue) {
                     hedgerActor.tell(new HedgerActor.VolChanged(pe.localSymbolProperty().getValue(), (double) newValue), null);
+                    setVolLabel();
                 }
             });
 
@@ -444,6 +456,7 @@ public class MainController {
 
         sortedTimeBarData.comparatorProperty().bind(tblTimeBars.comparatorProperty());
         tblTimeBars.setItems(sortedTimeBarData);
+        setVolLabel();
     }
 
     public void onPositionsUpdate(UpdateUiPositionsBatch uiUpdates) {
@@ -471,7 +484,43 @@ public class MainController {
                     }
                 }
             }
+            setVolLabel();
         });
+    }
+
+    @FXML
+    private Label lblVolMissing;
+
+    private void saveApplicationProperties () {
+        try {
+            // create and set properties into properties object
+            Properties props = new Properties();
+            props.setProperty("script.params", tfParam.getText());
+            // get or create the file
+            File f = new File("user.properties");
+            OutputStream out = new FileOutputStream( f );
+            // write into it
+            DefaultPropertiesPersister p = new DefaultPropertiesPersister();
+            p.store(props, out, "");
+        } catch (Exception e ) {
+            e.printStackTrace();
+        }
+    }
+
+    private void setVolLabel() {
+        boolean allVolFilled = true;
+        for (PositionEntry positionEntry : positionsData) {
+            if (positionEntry.volProperty().get() == 0.0d) {
+                allVolFilled =false;
+                break;
+            }
+        }
+        if (!allVolFilled) {
+            lblVolMissing.setText("Zero vol");
+        }
+        else {
+            lblVolMissing.setText("");
+        }
     }
 
     public void onPositionsReloadComplete() {
@@ -496,7 +545,7 @@ public class MainController {
     @FXML
     private CheckBox cbIncludeManualOrders;
 
-    private volatile boolean includeManualOrders = false;
+    private volatile boolean includeManualOrders = true;
 
     public boolean isIncludeManualOrders() {
         return includeManualOrders;
@@ -644,7 +693,9 @@ public class MainController {
                 case COMPLETED:
                     lblProgress.setTextFill(Color.GREEN);
                     break;
-                case FAILED:
+                case ORDER_REJECTED:
+                case PYTHON_FAILED:
+                case PYTHON_TIMEOUT:
                     lblProgress.setTextFill(Color.RED);
                     break;
             }

@@ -480,7 +480,14 @@ public class HedgerActor extends AbstractActor {
     }
 
     private void start() {
-        positions = StorageUtils.readPositions();
+        positions.clear();
+        for (Map.Entry<String, Position> e : StorageUtils.readPositions().entrySet()) {
+            String code = e.getKey();
+            Position p = e.getValue();
+            if (underlyingsFilter.contains(p.getContract().symbol())) {
+                positions.put(code, p);
+            }
+        }
         MainController.UpdateUiPositionsBatch uiUpdates = new MainController.UpdateUiPositionsBatch(true);
         for (Map.Entry<String, Position> e : positions.entrySet()) {
             uiUpdates.addAction(MainController.UpdateUiPositionsBatch.Action.UPDATE, e.getKey(), e.getValue());
@@ -528,7 +535,6 @@ public class HedgerActor extends AbstractActor {
                 if (amendmentProcess.getCurrentStage() == AmendmentProcess.Stage.WAITING_PLACE_CONFIRMATION) {
                     if (m.isProceed()) {
                         amendmentProcess.setCurrentStage(AmendmentProcess.Stage.PLACE_ORDERS);
-
                     } else {
                         amendmentProcess.setCurrentStage(AmendmentProcess.Stage.COMPLETED);
                     }
@@ -581,8 +587,12 @@ public class HedgerActor extends AbstractActor {
                         break;
                     case PLACE_ORDERS:
                         if (controller.isStarted()) {
-                            prepareTargetOrdersList();
-                            amendmentProcess.setCurrentStage(AmendmentProcess.Stage.PLACE_NEXT_TARGET_ORDER);
+                            if (prepareTargetOrdersList()) {
+                                amendmentProcess.setCurrentStage(AmendmentProcess.Stage.PLACE_NEXT_TARGET_ORDER);
+                            }
+                            else {
+                                amendmentProcess.setCurrentStage(AmendmentProcess.Stage.COMPLETED);
+                            }
                         } else {
                             amendmentProcess.setCurrentStage(AmendmentProcess.Stage.COMPLETED);
                         }
@@ -618,21 +628,39 @@ public class HedgerActor extends AbstractActor {
         }
     }
 
-    private void prepareTargetOrdersList() {
+    private boolean prepareTargetOrdersList() {
+        LinkedList<TargetOrder> orderedTargetOrders = new LinkedList<>();
         Set<String> futCodes = targetOrders.stream().map(TargetOrder::getCode).collect(Collectors.toSet());
         for (String code : futCodes) {
-            TimeBarRequest r = new TimeBarRequest(code, "4 hours");
-            TimebarArray timebarArray = currentBars.get(r);
-            double currentPx = timebarArray.getLastPx();
-            List<TargetOrder> sortedOrders = targetOrders.stream()
-                    .filter((to) -> to.getCode().equals(code) && (Math.abs(to.getQty()) >= Position.ZERO_POS_TRESHOLD))
-                    .sorted(Comparator.comparing((to) -> Math.abs(to.getPx() - currentPx)))
+            List<TargetOrder> buyOrdered =  targetOrders.stream()
+                    .filter((to) -> to.getCode().equals(code) && to.getQty() > 0)
+                    .sorted(Comparator.comparing((to) -> to.getPx()))
                     .collect(Collectors.toList());
-            amendmentProcess.setTargetOrderQueue(sortedOrders);
-//            for (TargetOrder to : sortedOrders) {
-//
-//            }
+
+            List<TargetOrder> sellOrdered =  targetOrders.stream()
+                    .filter((to) -> to.getCode().equals(code) && to.getQty() < 0)
+                    .sorted(Comparator.comparing((to) -> -to.getPx()))
+                    .collect(Collectors.toList());
+
+            if (!buyOrdered.isEmpty() && !sellOrdered.isEmpty()) {
+                TargetOrder firstBuyOrder = buyOrdered.get(0);
+                TargetOrder firstSellOrder = sellOrdered.get(0);
+                double pxLevel = (firstBuyOrder.getPx() + firstSellOrder.getPx()) / 2.0d;
+
+                List<TargetOrder> sortedOrders = targetOrders.stream()
+                        .filter((to) -> to.getCode().equals(code) && (Math.abs(to.getQty()) > 0))
+                        .sorted(Comparator.comparing((to) -> Math.abs(to.getPx() - pxLevel)))
+                        .collect(Collectors.toList());
+                orderedTargetOrders.addAll(sortedOrders);
+            }
+            else {
+                //one or both lists are empty
+                orderedTargetOrders.addAll(buyOrdered);
+                orderedTargetOrders.addAll(sellOrdered);
+            }
         }
+        amendmentProcess.setTargetOrderQueue(orderedTargetOrders);
+        return !orderedTargetOrders.isEmpty();
     }
 
     private Contract getContract(String code) {
@@ -690,9 +718,9 @@ public class HedgerActor extends AbstractActor {
         if (amendmentProcess != null) {
             try {
                 if (m.getResult() == PythonScriptResult.Result.FAILURE) {
-                    amendmentProcess.setCurrentStage(AmendmentProcess.Stage.FAILED);
+                    amendmentProcess.setCurrentStage(AmendmentProcess.Stage.PYTHON_FAILED);
                 } else if (m.getResult() == PythonScriptResult.Result.TIMEOUT) {
-                    amendmentProcess.setCurrentStage(AmendmentProcess.Stage.TIMEOUT);
+                    amendmentProcess.setCurrentStage(AmendmentProcess.Stage.PYTHON_TIMEOUT);
                 } else if (m.getResult() == PythonScriptResult.Result.SUCCESS) {
                     if (amendmentProcess.getCurrentStage() == AmendmentProcess.Stage.WAIT_PY_SCRIPT_COMPLETION) {
                         try {
@@ -708,7 +736,7 @@ public class HedgerActor extends AbstractActor {
                         } catch (Throwable t) {
                             String message = String.format("Options: can not read python script result %s %s", m.getResult().toString(), m.getFolder());
                             emailActorSelection.tell(new EmailActor.Email(message, message), self());
-                            amendmentProcess.setCurrentStage(AmendmentProcess.Stage.FAILED);
+                            amendmentProcess.setCurrentStage(AmendmentProcess.Stage.PYTHON_FAILED);
                             LOGGER.debug("", t);
                         }
                     }
@@ -957,7 +985,7 @@ public class HedgerActor extends AbstractActor {
                         if (orderStatus == OrderStatus.Inactive) {
                             String message = "Options: order rejected";
                             emailActorSelection.tell(new EmailActor.Email(message, message), self());
-                            amendmentProcess.setCurrentStage(AmendmentProcess.Stage.FAILED);
+                            amendmentProcess.setCurrentStage(AmendmentProcess.Stage.ORDER_REJECTED);
                         } else if (acceptedOrderStatuses.contains(orderStatus)) {
                             amendmentProcess.setCurrentStage(AmendmentProcess.Stage.PLACE_NEXT_TARGET_ORDER);
                         }
