@@ -24,7 +24,7 @@ public class PositionEntry {
     private final DoubleProperty posPx;
     private final DoubleProperty ir;
     private final DoubleProperty vol;
-
+    private final StringProperty lastViewPx;
     private final StringProperty lastPos;
     private final StringProperty lastTime;
 
@@ -42,6 +42,7 @@ public class PositionEntry {
         this.posPx = new SimpleDoubleProperty();
         this.ir = new SimpleDoubleProperty();
         this.vol = new SimpleDoubleProperty();
+        this.lastViewPx = new SimpleStringProperty();
         this.lastPos = new SimpleStringProperty();
         this.lastTime = new SimpleStringProperty();
     }
@@ -86,6 +87,7 @@ public class PositionEntry {
         vol.set(p.getVol());
         selected.set(p.isSelected());
 
+        lastViewPx.set(p.getLastViewPx());
         if (p.getLastTrade() != null) {
             lastPos.set(String.format("%.0f", p.getLastTrade().getPos()));
             lastTime.set(p.getLastTrade().getTime());
@@ -146,6 +148,10 @@ public class PositionEntry {
 
     public StringProperty lastTimeProperty() {
         return lastTime;
+    }
+
+    public StringProperty lastViewPxProperty() {
+        return lastViewPx;
     }
 
     private static final String HIGHLIGHT_COLOR = "lightcoral";

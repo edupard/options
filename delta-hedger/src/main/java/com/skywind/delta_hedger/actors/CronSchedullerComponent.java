@@ -17,10 +17,7 @@ import org.springframework.stereotype.Component;
 
 import javax.annotation.PostConstruct;
 import javax.swing.text.StyledEditorKit;
-import java.util.Date;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 @Component
 @Configuration
@@ -49,11 +46,13 @@ public class CronSchedullerComponent implements SchedulingConfigurer {
         private final String schedule;
         private final String scriptParam;
         private final boolean triggerOnTrade;
+        private final Set<String> targetUnderlyings;
 
-        public CronTaskConfig(String schedule, String scriptParam, boolean triggerOnTrade) {
+        public CronTaskConfig(String schedule, String scriptParam, boolean triggerOnTrade, Set<String> targetUnderlyings) {
             this.schedule = schedule;
             this.scriptParam = scriptParam;
             this.triggerOnTrade = triggerOnTrade;
+            this.targetUnderlyings = targetUnderlyings;
         }
     }
 
@@ -67,8 +66,16 @@ public class CronSchedullerComponent implements SchedulingConfigurer {
             }
             String scriptParams = env.getProperty(String.format("cron.task.%d.param", i));
             boolean triggerOnTrade = Boolean.parseBoolean(env.getProperty(String.format("cron.task.%d.trigger", i)));
+            String sUnderlyings = env.getProperty(String.format("cron.task.%d.underlyings", i), DEFAULT_VALUE);
+            Set<String> targetUnderlyings = new HashSet<>();
+            if (!sUnderlyings.equals(DEFAULT_VALUE)) {
+                String[] split = sUnderlyings.split(",");
+                for (String u : split) {
+                    targetUnderlyings.add(u);
+                }
+            }
 
-            cronTasks.add(new CronTaskConfig(schedule, scriptParams, triggerOnTrade));
+            cronTasks.add(new CronTaskConfig(schedule, scriptParams, triggerOnTrade, targetUnderlyings));
         }
 
         hedgerActor = actorSystem.actorSelection("/user/app/hedger");
@@ -81,7 +88,7 @@ public class CronSchedullerComponent implements SchedulingConfigurer {
             ct = new CronTask(
                     () -> {
                         controller.onSciptParams(c.scriptParam);
-                        hedgerActor.tell(new HedgerActor.RunAmendmentProcess(c.scriptParam, false), null);
+                        hedgerActor.tell(new HedgerActor.RunAmendmentProcess(c.targetUnderlyings, c.scriptParam, false), null);
                         controller.changeTriggerOnTrade(c.triggerOnTrade);
                     },
                     c.schedule);

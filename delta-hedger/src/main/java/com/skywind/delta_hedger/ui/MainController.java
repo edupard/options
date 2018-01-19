@@ -2,7 +2,9 @@ package com.skywind.delta_hedger.ui;
 
 import akka.actor.ActorSelection;
 import akka.actor.ActorSystem;
+import com.ib.client.Types;
 import com.skywind.delta_hedger.actors.*;
+import com.skywind.spring_javafx_integration.ui.FlashingTableCell;
 import com.skywind.spring_javafx_integration.ui.FormatedCellFactory;
 import javafx.application.Platform;
 import javafx.beans.value.ObservableValue;
@@ -80,6 +82,8 @@ public class MainController {
     @FXML
     private TableColumn<PositionEntry, Double> colVol;
     @FXML
+    private TableColumn<PositionEntry, String> colLastViewPx;
+    @FXML
     private TableColumn<PositionEntry, String> colLastPos;
     @FXML
     private TableColumn<PositionEntry, String> colLastTime;
@@ -111,6 +115,8 @@ public class MainController {
     @FXML
     private TableView<TargetOrderEntry> tblTargetOrders;
 
+    @FXML
+    private TableColumn<TargetOrderEntry, Integer> colToIdx;
     @FXML
     private TableColumn<TargetOrderEntry, String> colToCode;
     @FXML
@@ -411,6 +417,12 @@ public class MainController {
         });
         colVol.setCellFactory(TextFieldTableCell.forTableColumn(new CustomDoubleStringConverter()));
 
+        colLastViewPx.setCellValueFactory(cellData -> cellData.getValue().lastViewPxProperty());
+        colLastViewPx.setCellFactory(c -> {
+            return new FlashingTableCell<>();
+        });
+
+
         colLastPos.setCellValueFactory(cellData -> cellData.getValue().lastPosProperty());
         colLastTime.setCellValueFactory(cellData -> cellData.getValue().lastTimeProperty());
 
@@ -429,7 +441,7 @@ public class MainController {
         tblOpenOrders.setItems(sortedOoData);
 
 
-
+        colToIdx.setCellValueFactory(cellData -> cellData.getValue().idxProperty().asObject());
         colToCode.setCellValueFactory(cellData -> cellData.getValue().codeProperty());
         colToSide.setCellValueFactory(cellData -> cellData.getValue().sideProperty());
         colToPx.setCellValueFactory(cellData -> cellData.getValue().viewPxProperty());
@@ -510,7 +522,7 @@ public class MainController {
     private void setVolLabel() {
         boolean allVolFilled = true;
         for (PositionEntry positionEntry : positionsData) {
-            if (positionEntry.volProperty().get() == 0.0d) {
+            if (positionEntry.volProperty().get() == 0.0d && positionEntry.getPosition().getContract().secType() == Types.SecType.FOP) {
                 allVolFilled =false;
                 break;
             }
@@ -677,7 +689,7 @@ public class MainController {
     public void onRunPython() {
         lblProgress.setText("Running...");
         lblProgress.setTextFill(Color.BLUE);
-        hedgerActor.tell(new HedgerActor.RunAmendmentProcess(getScriptParams(), true), null);
+        hedgerActor.tell(new HedgerActor.RunAmendmentProcess(new HashSet<>(), getScriptParams(), true), null);
     }
 
     @FXML
@@ -696,6 +708,7 @@ public class MainController {
                 case ORDER_REJECTED:
                 case PYTHON_FAILED:
                 case PYTHON_TIMEOUT:
+                case PYTHON_DATA_FAILURE:
                     lblProgress.setTextFill(Color.RED);
                     break;
             }

@@ -25,6 +25,7 @@ public class Position {
     private double ir;
     private Trade lastTrade;
     private boolean selected;
+    private String lastViewPx = "";
 
     public Position(boolean selected, Contract contract, double pos, double posPx, double vol, double ir, Trade lastTrade) {
         this.selected = selected;
@@ -46,6 +47,7 @@ public class Position {
         this.expiry = other.expiry;
         this.lastTrade = other.lastTrade;
         this.selected = other.selected;
+        this.lastViewPx = other.lastViewPx;
     }
 
     public Contract getContract() {
@@ -79,8 +81,7 @@ public class Position {
             double grossValue = this.pos * this.posPx + pos * posPx;
             this.pos += pos;
             this.posPx = grossValue / this.pos;
-        }
-        else {
+        } else {
             if (Math.abs(this.pos) < Math.abs(pos)) {
                 this.posPx = posPx;
             }
@@ -141,8 +142,7 @@ public class Position {
                     .toFormatter()
                     .withZone(ZoneId.of(timezoneId));
             expiry = FMT.parse(sDateTime, Instant::from);
-        }
-        catch (Throwable t) {
+        } catch (Throwable t) {
             LOGGER.error("Can not get expiry instant", t);
         }
     }
@@ -171,5 +171,11 @@ public class Position {
         this.selected = selected;
     }
 
+    public void setLastViewPx(String lastViewPx) {
+        this.lastViewPx = lastViewPx;
+    }
 
+    public String getLastViewPx() {
+        return lastViewPx;
+    }
 }

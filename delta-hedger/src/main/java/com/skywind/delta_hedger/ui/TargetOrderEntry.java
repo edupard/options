@@ -4,6 +4,7 @@ import com.skywind.delta_hedger.actors.TargetOrder;
 import javafx.beans.property.*;
 
 public class TargetOrderEntry {
+    private final IntegerProperty idx;
     private final StringProperty code;
     private final StringProperty side;
     private final StringProperty viewPx;
@@ -11,6 +12,7 @@ public class TargetOrderEntry {
     private final StringProperty orderType;
 
     public TargetOrderEntry() {
+        this.idx = new SimpleIntegerProperty();
         this.code = new SimpleStringProperty();
         this.side = new SimpleStringProperty();
         this.viewPx = new SimpleStringProperty();
@@ -19,6 +21,7 @@ public class TargetOrderEntry {
     }
 
     public void updateUi(TargetOrder to) {
+        idx.setValue(to.getIdx());
         code.set(to.getCode());
         side.set(to.getQty() > 0 ? "BUY" : "SELL");
         viewPx.set(to.getViewPx());
@@ -26,41 +29,30 @@ public class TargetOrderEntry {
         orderType.set(to.getOrderType());
     }
 
-    public String getCode() {
-        return code.get();
+
+    public IntegerProperty idxProperty() {
+        return idx;
     }
 
     public StringProperty codeProperty() {
         return code;
     }
 
-    public String getSide() {
-        return side.get();
-    }
 
     public StringProperty sideProperty() {
         return side;
     }
 
-    public String getViewPx() {
-        return viewPx.get();
-    }
 
     public StringProperty viewPxProperty() {
         return viewPx;
     }
 
-    public double getQty() {
-        return qty.get();
-    }
 
     public DoubleProperty qtyProperty() {
         return qty;
     }
 
-    public String getOrderType() {
-        return orderType.get();
-    }
 
     public StringProperty orderTypeProperty() {
         return orderType;

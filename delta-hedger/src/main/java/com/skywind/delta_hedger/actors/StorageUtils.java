@@ -115,32 +115,25 @@ public class StorageUtils {
             .toFormatter()
             .withZone(ZoneId.systemDefault());
 
-    public static void prepareInputPositions(Map<String, Position> positionsByLocalSymbol, String positionsFileName) {
+    public static void storeInputPositions(List<Position> inputPositions, String positionsFileName) throws IOException {
         try (CSVPrinter writer = new CSVPrinter(new FileWriter(positionsFileName, false), CSV_INPUT_POSITIONS_FORMAT)) {
-            for (Map.Entry<String, Position> entry : positionsByLocalSymbol.entrySet()) {
-                Position pi = entry.getValue();
-                if (!pi.isSelected())
-                {
-                    continue;
+            for (Position p : inputPositions) {
+                if (p.isSelected()) {
+                    writer.printRecord(
+                            p.getContract().localSymbol(),
+                            p.getContractDetails() == null ? "" : p.getContractDetails().underSymbol(),
+                            p.getContract().secType(),
+                            p.getExpiry() == null ? "" : TIME_FMT.format(p.getExpiry()),
+                            p.getContract().strike(),
+                            p.getContract().right(),
+                            p.getContract().multiplier(),
+                            p.getPos(),
+                            p.getPosPx(),
+                            p.getIr(),
+                            p.getVol()
+                    );
                 }
-
-                //Check contract details and expiry
-                writer.printRecord(
-                        pi.getContract().localSymbol(),
-                        pi.getContractDetails() == null ? "" : pi.getContractDetails().underSymbol(),
-                        pi.getContract().secType(),
-                        pi.getExpiry() == null ? "" : TIME_FMT.format(pi.getExpiry()),
-                        pi.getContract().strike(),
-                        pi.getContract().right(),
-                        pi.getContract().multiplier(),
-                        pi.getPos(),
-                        pi.getPosPx(),
-                        pi.getIr(),
-                        pi.getVol()
-                );
             }
-        } catch (IOException ex) {
-            throw new RuntimeException(ex);
         }
     }
 
@@ -157,27 +150,24 @@ public class StorageUtils {
                     COLUMN_VOLUME
             );
 
-    public static void prepareInputBars(Map<HedgerActor.TimeBarRequest, HedgerActor.TimebarArray> currentBars, String inputTimeBarsFileName) {
+    public static void storeInputBars(List<HedgerActor.Timebar> inputTimebars, String inputTimeBarsFileName) throws IOException {
         try (CSVPrinter writer = new CSVPrinter(new FileWriter(inputTimeBarsFileName, false), CSV_INPUT_TIME_BARS_FORMAT)) {
-            for (Map.Entry<HedgerActor.TimeBarRequest, HedgerActor.TimebarArray> entry : currentBars.entrySet()) {
-                for(HedgerActor.Timebar tb : entry.getValue().getBars()) {
-                    writer.printRecord(
-                            tb.getLocalSymbol(),
-                            TIME_FMT.format(tb.getBarTime()),
-                            tb.getDuration(),
-                            tb.getOpen(),
-                            tb.getHigh(),
-                            tb.getLow(),
-                            tb.getClose(),
-                            tb.getVolume()
-                    );
-                }
+            for (HedgerActor.Timebar tb : inputTimebars) {
+                writer.printRecord(
+                        tb.getLocalSymbol(),
+                        TIME_FMT.format(tb.getBarTime()),
+                        tb.getDuration(),
+                        tb.getOpen(),
+                        tb.getHigh(),
+                        tb.getLow(),
+                        tb.getClose(),
+                        tb.getVolume()
+                );
             }
-        } catch (IOException ex) {
-            throw new RuntimeException(ex);
         }
     }
 
+    private static final String COLUMN_TGT_ORDERS_IDX = "idx";
     private static final String COLUMN_TGT_ORDERS_CODE = "code";
     private static final String COLUMN_TGT_ORDERS_PX = "px";
     private static final String COLUMN_TGT_ORDERS_VIEW_PX = "view_px";
@@ -189,6 +179,7 @@ public class StorageUtils {
             .withRecordSeparator(System.lineSeparator())
             .withHeader(
                     COLUMN_TGT_ORDERS_CODE,
+                    COLUMN_TGT_ORDERS_IDX,
                     COLUMN_TGT_ORDERS_PX,
                     COLUMN_TGT_ORDERS_QTY,
                     COLUMN_TGT_ORDERS_TYPE,
@@ -203,19 +194,19 @@ public class StorageUtils {
             try (CSVParser reader = new CSVParser(new FileReader(tgtOrdersPath), CSV_TARGER_ORDERS_FORMAT.withSkipHeaderRecord())) {
                 for (CSVRecord r : reader) {
                     String code = r.get(COLUMN_TGT_ORDERS_CODE);
+                    int idx = Integer.parseInt(r.get(COLUMN_TGT_ORDERS_IDX));
                     double px = Double.parseDouble(r.get(COLUMN_TGT_ORDERS_PX));
                     String viewPx = r.get(COLUMN_TGT_ORDERS_VIEW_PX);
                     double qty = Double.parseDouble(r.get(COLUMN_TGT_ORDERS_QTY));
                     String orderType = r.get(COLUMN_TGT_ORDERS_TYPE);
-                    result.add(new TargetOrder(code, px, viewPx, qty, orderType));
+                    result.add(new TargetOrder(idx, code, px, viewPx, qty, orderType));
                 }
             } catch (FileNotFoundException e) {
                 throw new RuntimeException(e);
             } catch (IOException e) {
                 throw new RuntimeException(e);
             }
-        }
-        else {
+        } else {
             throw new RuntimeException("Target order file absent");
         }
         return result;

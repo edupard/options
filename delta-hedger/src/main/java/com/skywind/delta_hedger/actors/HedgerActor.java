@@ -99,6 +99,7 @@ public class HedgerActor extends AbstractActor {
 
     public static final class RunAmendmentProcess {
 
+        private final Set<String> targetUnderlyings;
         private final String params;
         private final boolean manual;
 
@@ -106,7 +107,16 @@ public class HedgerActor extends AbstractActor {
             return params;
         }
 
-        public RunAmendmentProcess(String params, boolean manual) {
+        public boolean includeIntoPositions(String underlyingCode) {
+            // no filter
+            if (targetUnderlyings.isEmpty()) {
+                return true;
+            }
+            return targetUnderlyings.contains(underlyingCode);
+        }
+
+        public RunAmendmentProcess(Set<String> targetUnderlyings, String params, boolean manual) {
+            this.targetUnderlyings = targetUnderlyings;
             this.params = params;
             this.manual = manual;
         }
@@ -120,6 +130,7 @@ public class HedgerActor extends AbstractActor {
 
         public enum Result {
             SUCCESS,
+            DATA_FAILURE,
             FAILURE,
             TIMEOUT
         }
@@ -534,7 +545,7 @@ public class HedgerActor extends AbstractActor {
             try {
                 if (amendmentProcess.getCurrentStage() == AmendmentProcess.Stage.WAITING_PLACE_CONFIRMATION) {
                     if (m.isProceed()) {
-                        amendmentProcess.setCurrentStage(AmendmentProcess.Stage.PLACE_ORDERS);
+                        amendmentProcess.setCurrentStage(AmendmentProcess.Stage.PLACE_NEXT_TARGET_ORDER);
                     } else {
                         amendmentProcess.setCurrentStage(AmendmentProcess.Stage.COMPLETED);
                     }
@@ -561,8 +572,6 @@ public class HedgerActor extends AbstractActor {
                         if (openOrders.isEmpty() || !controller.isStarted()) {
                             if (amendmentProcess.isCallPyScript()) {
                                 amendmentProcess.setCurrentStage(AmendmentProcess.Stage.CALL_PY_SCRIPT);
-                            } else if (amendmentProcess.isConfirmPlaceOrders()) {
-                                amendmentProcess.setCurrentStage(AmendmentProcess.Stage.SHOW_PLACE_CONFIRMATION);
                             } else if (amendmentProcess.isPlaceOrders()) {
                                 amendmentProcess.setCurrentStage(AmendmentProcess.Stage.PLACE_ORDERS);
                             } else {
@@ -588,7 +597,12 @@ public class HedgerActor extends AbstractActor {
                     case PLACE_ORDERS:
                         if (controller.isStarted()) {
                             if (prepareTargetOrdersList()) {
-                                amendmentProcess.setCurrentStage(AmendmentProcess.Stage.PLACE_NEXT_TARGET_ORDER);
+                                if (amendmentProcess.isConfirmPlaceOrders()) {
+                                    amendmentProcess.setCurrentStage(AmendmentProcess.Stage.SHOW_PLACE_CONFIRMATION);
+                                }
+                                else {
+                                    amendmentProcess.setCurrentStage(AmendmentProcess.Stage.PLACE_NEXT_TARGET_ORDER);
+                                }
                             }
                             else {
                                 amendmentProcess.setCurrentStage(AmendmentProcess.Stage.COMPLETED);
@@ -629,36 +643,10 @@ public class HedgerActor extends AbstractActor {
     }
 
     private boolean prepareTargetOrdersList() {
-        LinkedList<TargetOrder> orderedTargetOrders = new LinkedList<>();
-        Set<String> futCodes = targetOrders.stream().map(TargetOrder::getCode).collect(Collectors.toSet());
-        for (String code : futCodes) {
-            List<TargetOrder> buyOrdered =  targetOrders.stream()
-                    .filter((to) -> to.getCode().equals(code) && to.getQty() > 0)
-                    .sorted(Comparator.comparing((to) -> to.getPx()))
-                    .collect(Collectors.toList());
-
-            List<TargetOrder> sellOrdered =  targetOrders.stream()
-                    .filter((to) -> to.getCode().equals(code) && to.getQty() < 0)
-                    .sorted(Comparator.comparing((to) -> -to.getPx()))
-                    .collect(Collectors.toList());
-
-            if (!buyOrdered.isEmpty() && !sellOrdered.isEmpty()) {
-                TargetOrder firstBuyOrder = buyOrdered.get(0);
-                TargetOrder firstSellOrder = sellOrdered.get(0);
-                double pxLevel = (firstBuyOrder.getPx() + firstSellOrder.getPx()) / 2.0d;
-
-                List<TargetOrder> sortedOrders = targetOrders.stream()
-                        .filter((to) -> to.getCode().equals(code) && (Math.abs(to.getQty()) > 0))
-                        .sorted(Comparator.comparing((to) -> Math.abs(to.getPx() - pxLevel)))
-                        .collect(Collectors.toList());
-                orderedTargetOrders.addAll(sortedOrders);
-            }
-            else {
-                //one or both lists are empty
-                orderedTargetOrders.addAll(buyOrdered);
-                orderedTargetOrders.addAll(sellOrdered);
-            }
-        }
+        List<TargetOrder> orderedTargetOrders = targetOrders.stream()
+                .filter((to) -> Math.abs(to.getQty()) > 0)
+                .sorted(Comparator.comparing((to) -> to.getIdx()))
+                .collect(Collectors.toList());
         amendmentProcess.setTargetOrderQueue(orderedTargetOrders);
         return !orderedTargetOrders.isEmpty();
     }
@@ -710,7 +698,8 @@ public class HedgerActor extends AbstractActor {
 
         // Email
         if (m.getResult() == PythonScriptResult.Result.FAILURE
-                || m.getResult() == PythonScriptResult.Result.TIMEOUT) {
+                || m.getResult() == PythonScriptResult.Result.TIMEOUT
+                || m.getResult() == PythonScriptResult.Result.DATA_FAILURE) {
             String message = String.format("Options: python script %s %s", m.getResult().toString(), m.getFolder());
             emailActorSelection.tell(new EmailActor.Email(message, message), self());
         }
@@ -721,14 +710,14 @@ public class HedgerActor extends AbstractActor {
                     amendmentProcess.setCurrentStage(AmendmentProcess.Stage.PYTHON_FAILED);
                 } else if (m.getResult() == PythonScriptResult.Result.TIMEOUT) {
                     amendmentProcess.setCurrentStage(AmendmentProcess.Stage.PYTHON_TIMEOUT);
+                } else if (m.getResult() == PythonScriptResult.Result.DATA_FAILURE) {
+                    amendmentProcess.setCurrentStage(AmendmentProcess.Stage.PYTHON_DATA_FAILURE);
                 } else if (m.getResult() == PythonScriptResult.Result.SUCCESS) {
                     if (amendmentProcess.getCurrentStage() == AmendmentProcess.Stage.WAIT_PY_SCRIPT_COMPLETION) {
                         try {
                             targetOrders = StorageUtils.readTargetOrders(m.getFolder());
                             controller.onTargetOrders(targetOrders);
-                            if (amendmentProcess.isConfirmPlaceOrders()) {
-                                amendmentProcess.setCurrentStage(AmendmentProcess.Stage.SHOW_PLACE_CONFIRMATION);
-                            } else if (amendmentProcess.isPlaceOrders()) {
+                            if (amendmentProcess.isPlaceOrders()) {
                                 amendmentProcess.setCurrentStage(AmendmentProcess.Stage.PLACE_ORDERS);
                             } else {
                                 amendmentProcess.setCurrentStage(AmendmentProcess.Stage.COMPLETED);
@@ -757,16 +746,21 @@ public class HedgerActor extends AbstractActor {
             .toFormatter()
             .withZone(ZoneId.systemDefault());
 
-    private void prepareScriptData(String dataFolder, String dataFolderName, String sRunTime, String scriptParams) throws IOException {
+    private void storeInputData(List<Position> inputPositions,
+                                List<Timebar> inputTimebars,
+                                String dataFolder,
+                                String dataFolderName,
+                                String sRunTime,
+                                String scriptParams) throws IOException {
         Path path = Paths.get(dataFolder);
         if (!Files.exists(path)) {
             Files.createDirectories(path);
         }
 
         String inputPositionsFileName = String.format("%s\\positions.csv", dataFolder);
-        StorageUtils.prepareInputPositions(positions, inputPositionsFileName);
+        StorageUtils.storeInputPositions(inputPositions, inputPositionsFileName);
         String inputTimeBarsFileName = String.format("%s\\time_bars.csv", dataFolder);
-        StorageUtils.prepareInputBars(currentBars, inputTimeBarsFileName);
+        StorageUtils.storeInputBars(inputTimebars, inputTimeBarsFileName);
         String comandLineParametersFileName = String.format("%s\\command_line.txt", dataFolder);
         try (PrintWriter out = new PrintWriter(comandLineParametersFileName)) {
             out.println(String.format("\"%s\" \"%s\" \"%s\"", dataFolderName, sRunTime, scriptParams));
@@ -786,7 +780,16 @@ public class HedgerActor extends AbstractActor {
         String dataFolderName = "profile_data";
         String DATA_FOLDER = String.format("%s\\data\\%s", scriptFolder, dataFolderName);
         try {
-            prepareScriptData(DATA_FOLDER, dataFolderName, sRunTime, "");
+            List<Position> inputPositions = positions
+                    .values()
+                    .stream()
+                    .collect(Collectors.toList());
+            List<Timebar> inputTimebars = new LinkedList<>();
+            for (Map.Entry<HedgerActor.TimeBarRequest, HedgerActor.TimebarArray> entry : currentBars.entrySet()) {
+                inputTimebars.addAll(entry.getValue().getBars());
+            }
+
+            storeInputData(inputPositions, inputTimebars, DATA_FOLDER, dataFolderName, sRunTime, "");
             String pythonScript = String.format("%s\\portfolio.py", scriptFolder);
             ProcessBuilder processBuilder = new ProcessBuilder(pythonPath, pythonScript, dataFolderName, sRunTime);
             try {
@@ -822,10 +825,34 @@ public class HedgerActor extends AbstractActor {
         String DATA_FOLDER = String.format("%s\\data\\%s", scriptFolder, dataFolderName);
 
         try {
-            prepareScriptData(DATA_FOLDER, dataFolderName, sRunTime, amendmentProcess.getCommand().getParams());
+            List<Position> inputPositions = positions
+                    .values()
+                    .stream()
+                    .filter((p) -> {
+                        if (p.getContract().secType() == Types.SecType.FUT) {
+                            if (amendmentProcess.includeIntoPositions(p.getContract().localSymbol())) {
+                                return true;
+                            }
+                        } else if (p.getContract().secType() == Types.SecType.FOP) {
+                            if (amendmentProcess.includeIntoPositions(p.getContractDetails().underSymbol())) {
+                                return true;
+                            }
+                        }
+                        return true;
+                    })
+                    .collect(Collectors.toList());
+
+            List<Timebar> inputTimebars = new LinkedList<>();
+            for (Map.Entry<HedgerActor.TimeBarRequest, HedgerActor.TimebarArray> entry : currentBars.entrySet()) {
+                if (amendmentProcess.includeIntoPositions(entry.getKey().getLocalSymbol())) {
+                    inputTimebars.addAll(entry.getValue().getBars());
+                }
+            }
+
+            storeInputData(inputPositions, inputTimebars, DATA_FOLDER, dataFolderName, sRunTime, amendmentProcess.getCommand().getParams());
         } catch (Throwable t) {
             LOGGER.error("", t);
-            self().tell(new PythonScriptResult(actorId, PythonScriptResult.Result.FAILURE, DATA_FOLDER), self());
+            self().tell(new PythonScriptResult(actorId, PythonScriptResult.Result.DATA_FAILURE, DATA_FOLDER), self());
             return;
         }
 
@@ -997,8 +1024,6 @@ public class HedgerActor extends AbstractActor {
                                 if (amendmentProcess.getCurrentStage() == AmendmentProcess.Stage.WAIT_ALL_ORDERS_CANCELLED) {
                                     if (amendmentProcess.isCallPyScript()) {
                                         amendmentProcess.setCurrentStage(AmendmentProcess.Stage.CALL_PY_SCRIPT);
-                                    } else if (amendmentProcess.isConfirmPlaceOrders()) {
-                                        amendmentProcess.setCurrentStage(AmendmentProcess.Stage.SHOW_PLACE_CONFIRMATION);
                                     } else if (amendmentProcess.isPlaceOrders()) {
                                         amendmentProcess.setCurrentStage(AmendmentProcess.Stage.PLACE_ORDERS);
                                     } else {
@@ -1108,11 +1133,14 @@ public class HedgerActor extends AbstractActor {
                     positions.put(localSymbol, p);
                 }
                 StorageUtils.storePositions(positions);
-                if (controller.isTriggerOnTrade()) {
-                    self().tell(new RunAmendmentProcess(controller.getScriptParams(), false), self());
-                }
                 controller.onPositionsUpdate(uiUpdates);
                 onPositionsUpdate();
+                // trigger amendment on fut trades only
+                if (controller.isTriggerOnTrade() && m.getContract().secType() == Types.SecType.FOP) {
+                    HashSet<String> targetUnderlyings = new HashSet<>();
+                    targetUnderlyings.add(m.getContract().localSymbol());
+                    self().tell(new RunAmendmentProcess(targetUnderlyings, controller.getScriptParams(), false), self());
+                }
             }
         }
     }
@@ -1329,6 +1357,15 @@ public class HedgerActor extends AbstractActor {
             }
             arr.onTimeBar(tb);
             controller.onTimeBar(tb);
+
+
+            Position p = positions.get(r.localSymbol);
+            if (p != null) {
+                p.setLastViewPx(PriceUtils.convertPrice(bar.close(), futPriceCoeff));
+                MainController.UpdateUiPositionsBatch uiUpdates = new MainController.UpdateUiPositionsBatch(false);
+                uiUpdates.addAction(MainController.UpdateUiPositionsBatch.Action.UPDATE, r.localSymbol, p);
+                controller.onPositionsUpdate(uiUpdates);
+            }
         } else {
             ibGateway.getClientSocket().cancelHistoricalData(reqId);
         }

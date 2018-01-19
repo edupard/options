@@ -66,7 +66,8 @@ public class AmendmentProcess {
         COMPLETED,
         ORDER_REJECTED,
         PYTHON_FAILED,
-        PYTHON_TIMEOUT
+        PYTHON_TIMEOUT,
+        PYTHON_DATA_FAILURE,
     }
 
     private Stage currentStage;
@@ -95,6 +96,10 @@ public class AmendmentProcess {
 
     public boolean isConfirmPlaceOrders() {
         return confirmPlaceOrders && placeOrders;
+    }
+
+    public boolean includeIntoPositions(String underlyingCode) {
+        return command.includeIntoPositions(underlyingCode);
     }
 
     public AmendmentProcess(HedgerActor.RunAmendmentProcess command, boolean cancelOrders, boolean callPyScript, boolean placeOrders, boolean confirmPlaceOrders) {
@@ -127,6 +132,7 @@ public class AmendmentProcess {
         return currentStage == Stage.PYTHON_FAILED ||
                 currentStage == Stage.ORDER_REJECTED ||
                 currentStage == Stage.COMPLETED ||
-                currentStage == Stage.PYTHON_TIMEOUT;
+                currentStage == Stage.PYTHON_TIMEOUT ||
+                currentStage == Stage.PYTHON_DATA_FAILURE;
     }
 }
