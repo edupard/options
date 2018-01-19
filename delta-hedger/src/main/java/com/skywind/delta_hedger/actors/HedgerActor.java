@@ -78,6 +78,9 @@ public class HedgerActor extends AbstractActor {
     }
 
 
+    public static final class ProcessPendingAmendmentProcessQueueTask {
+    }
+
     public static final class Start {
     }
 
@@ -340,8 +343,15 @@ public class HedgerActor extends AbstractActor {
                 .match(RefreshDaysToExpiration.class, m -> {
                     onRefreshDaysToExpiration(m);
                 })
+                .match(ProcessPendingAmendmentProcessQueueTask.class, m -> {
+                    onProcessPendingAmendmentProcessQueueTask(m);
+                })
                 .matchAny(m -> recievedUnknown(m))
                 .build();
+    }
+
+    private void onProcessPendingAmendmentProcessQueueTask(ProcessPendingAmendmentProcessQueueTask m) {
+        processPendingAmendmentProcessQueue();
     }
 
     private void onRefreshDaysToExpiration(RefreshDaysToExpiration m) {
@@ -406,7 +416,6 @@ public class HedgerActor extends AbstractActor {
                 String message = "Options: disconnected from IB";
                 emailActorSelection.tell(new EmailActor.Email(message, message), self());
             }
-
         }
         if (RECONNECTED_TO_IB_ERROR_CODES.contains(m.getErrorCode())) {
             if (!ibConnection) {
@@ -414,9 +423,15 @@ public class HedgerActor extends AbstractActor {
                 controller.onIbConnection(ibConnection);
                 String message = "Options: reconnected to IB";
                 emailActorSelection.tell(new EmailActor.Email(message, message), self());
-
                 requestExecutions();
                 refreshTimebars(true);
+
+                getContext().system().scheduler().scheduleOnce(
+                        Duration.create(2, TimeUnit.SECONDS),
+                        self(),
+                        new ProcessPendingAmendmentProcessQueueTask(),
+                        getContext().dispatcher(),
+                        self());
             }
         }
 
@@ -435,6 +450,25 @@ public class HedgerActor extends AbstractActor {
             controller.onApiConnection(false);
             controller.onIbConnection(false);
             throw new RuntimeException("Ib socket closed");
+        }
+
+        if (m.getErrorCode() == 200) {
+            if (amendmentProcess != null && !amendmentProcess.isFinished()) {
+                try {
+                    if (amendmentProcess.isPlacedOrder(m.getId())) {
+                        // Send email
+                        String message = "Options: amendment process interrupted by disconnect";
+                        emailActorSelection.tell(new EmailActor.Email(message, message), self());
+                        // Set current stage
+                        amendmentProcess.setCurrentStage(AmendmentProcess.Stage.INTERRUPTED_BY_DISCONNECT);
+                        // Schedule new amendment process
+                        pendingProcesses.add(amendmentProcess.getCommand());
+                    }
+                }
+                finally {
+                    doNextAmendmentProcessStage();
+                }
+            }
         }
     }
 
@@ -1385,8 +1419,6 @@ public class HedgerActor extends AbstractActor {
                 ibGateway.getClientSocket().cancelHistoricalData(reqId);
             }
             timeBarsRequestMap.clear();
-            currentBars.clear();
-            controller.onClearTimeBars();
         }
         Set<TimeBarRequest> requests = new HashSet<>();
 

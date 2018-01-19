@@ -68,6 +68,7 @@ public class AmendmentProcess {
         PYTHON_FAILED,
         PYTHON_TIMEOUT,
         PYTHON_DATA_FAILURE,
+        INTERRUPTED_BY_DISCONNECT,
     }
 
     private Stage currentStage;
@@ -133,6 +134,7 @@ public class AmendmentProcess {
                 currentStage == Stage.ORDER_REJECTED ||
                 currentStage == Stage.COMPLETED ||
                 currentStage == Stage.PYTHON_TIMEOUT ||
-                currentStage == Stage.PYTHON_DATA_FAILURE;
+                currentStage == Stage.PYTHON_DATA_FAILURE ||
+                currentStage == Stage.INTERRUPTED_BY_DISCONNECT;
     }
 }

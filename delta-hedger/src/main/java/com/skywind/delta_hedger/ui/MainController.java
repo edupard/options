@@ -179,13 +179,6 @@ public class MainController {
         }
     }
 
-    public void onClearTimeBars() {
-        Platform.runLater(() -> {
-            timeBarsDataMap.clear();
-            timeBarData.clear();
-        });
-    }
-
     public void onApiConnection(boolean apiConnection) {
         Platform.runLater(() -> {
             lblApiConnection.setTextFill(apiConnection ? Color.GREEN : Color.RED);
@@ -687,8 +680,6 @@ public class MainController {
 
     @FXML
     public void onRunPython() {
-        lblProgress.setText("Running...");
-        lblProgress.setTextFill(Color.BLUE);
         hedgerActor.tell(new HedgerActor.RunAmendmentProcess(new HashSet<>(), getScriptParams(), true), null);
     }
 
@@ -709,6 +700,7 @@ public class MainController {
                 case PYTHON_FAILED:
                 case PYTHON_TIMEOUT:
                 case PYTHON_DATA_FAILURE:
+                case INTERRUPTED_BY_DISCONNECT:
                     lblProgress.setTextFill(Color.RED);
                     break;
             }

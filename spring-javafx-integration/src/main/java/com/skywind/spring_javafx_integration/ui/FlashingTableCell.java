@@ -32,7 +32,7 @@ public class FlashingTableCell<S, T> extends TableCell<S, T> {
         boolean changed = false;
         if (oldValue != null) {
             if (value != null) {
-                System.out.println(String.format("old: %s new: %s", oldValue.toString(), value.toString()));
+//                System.out.println(String.format("old: %s new: %s", oldValue.toString(), value.toString()));
                 if (!oldValue.toString().equals(value.toString())) {
 
                     changed = true;
