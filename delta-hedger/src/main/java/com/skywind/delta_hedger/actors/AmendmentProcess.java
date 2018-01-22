@@ -9,6 +9,7 @@ public class AmendmentProcess {
 
     private Integer placedOrder = null;
     private LinkedList<TargetOrder> targetOrderQueue;
+    private LinkedList<TargetOrder> targetOrders;
 
     public void placeOrder(int orderId) {
         placedOrder = orderId;
@@ -41,6 +42,7 @@ public class AmendmentProcess {
 
     public void setTargetOrderQueue(List<TargetOrder> targetOrderQueue) {
         this.targetOrderQueue = new LinkedList<>(targetOrderQueue);
+        this.targetOrders = new LinkedList<>(targetOrderQueue);
     }
 
     public TargetOrder getNextTargetOrder() {
@@ -127,6 +129,20 @@ public class AmendmentProcess {
 
     public void setCurrentStage(Stage currentStage) {
         this.currentStage = currentStage;
+    }
+
+    private boolean resultSent = false;
+
+    public boolean isResultSent() {
+        return resultSent;
+    }
+
+    public void setResultSent() {
+        resultSent = true;
+    }
+
+    public LinkedList<TargetOrder> getTargetOrders() {
+        return targetOrders;
     }
 
     public boolean isFinished() {

@@ -7,6 +7,7 @@ import com.skywind.ib.IbGateway;
 import com.skywind.ib.Utils;
 import com.skywind.trading.spring_akka_integration.EmailActor;
 import com.skywind.trading.spring_akka_integration.MessageSentToExactActorInstance;
+import org.omg.CORBA.Environment;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.beans.factory.config.BeanDefinition;
@@ -666,6 +667,17 @@ public class HedgerActor extends AbstractActor {
         } finally {
             controller.onProgress(amendmentProcess.getCurrentStage());
             processPendingAmendmentProcessQueue();
+
+            if (amendmentProcess.isFinished() && !amendmentProcess.isResultSent()) {
+                amendmentProcess.setResultSent();
+                StringBuilder sb = new StringBuilder();
+                for (TargetOrder to : amendmentProcess.getTargetOrders()) {
+                    sb.append(String.format("%d %s %s %.0f %s", to.getIdx(), to.getCode(), to.getOrderType(), to.getQty(), to.getViewPx()));
+                    sb.append(System.lineSeparator());
+                }
+                String message = String.format("Options: %s amendment procedure %s", amendmentProcess.getCommand().getParams(), amendmentProcess.getCurrentStage().toString());
+                emailActorSelection.tell(new EmailActor.Email(message, sb.toString()), self());
+            }
         }
     }
 
@@ -933,6 +945,8 @@ public class HedgerActor extends AbstractActor {
         if (!pendingProcesses.isEmpty()) {
             RunAmendmentProcess m = pendingProcesses.pollFirst();
             amendmentProcess = new AmendmentProcess(m, controller.isCancelOrders(), controller.isRunPython(), controller.isPlaceOrders(), m.isManual() || controller.isConfirmPlace());
+            String message = String.format("Options: starting %s amendment procedure", m.getParams());
+            emailActorSelection.tell(new EmailActor.Email(message, message), self());
             doNextAmendmentProcessStage();
         }
     }
