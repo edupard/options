@@ -1183,6 +1183,12 @@ public class HedgerActor extends AbstractActor {
                 StorageUtils.storePositions(positions);
                 controller.onPositionsUpdate(uiUpdates);
                 onPositionsUpdate();
+//                if (m.getContract().secType() == Types.SecType.FOP) {
+//                    StringBuilder sb = new StringBuilder(getExecDetails(m));
+//                    sb.append(System.lineSeparator());
+//                    emailActorSelection.tell(new EmailActor.Email("Options: TRADE", sb.toString()), self());
+//
+//                }
                 // trigger amendment on fut trades only
                 if (controller.isTriggerOnTrade() && m.getContract().secType() == Types.SecType.FOP) {
                     HashSet<String> targetUnderlyings = new HashSet<>();
@@ -1192,6 +1198,18 @@ public class HedgerActor extends AbstractActor {
             }
         }
     }
+
+    private String getExecDetails(IbGateway.ExecDetails ed) {
+        return String.format("Exec details: %s %s\n%s %.0f %s at %.2f\n%s",
+                ed.getExecution().acctNumber(),
+                ed.getExecution().execId(),
+                ed.getExecution().side(),
+                ed.getExecution().shares(),
+                ed.getContract().localSymbol(),
+                ed.getExecution().price(),
+                ed.getExecution().time());
+    }
+
 
     public static final class Timebar {
         private final String localSymbol;
