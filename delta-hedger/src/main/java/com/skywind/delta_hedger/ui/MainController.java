@@ -671,6 +671,21 @@ public class MainController {
         return confirmPlace;
     }
 
+
+    @FXML
+    private CheckBox cbUptrend;
+
+    private volatile boolean uptrend = false;
+
+    @FXML
+    public void onUptrendChanged() {
+        uptrend = cbUptrend.isSelected();
+    }
+
+    public boolean isUptrend() {
+        return uptrend;
+    }
+
     @FXML
     private TextField tfParam;
 

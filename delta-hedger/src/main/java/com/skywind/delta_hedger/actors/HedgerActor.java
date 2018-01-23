@@ -465,8 +465,7 @@ public class HedgerActor extends AbstractActor {
                         // Schedule new amendment process
                         pendingProcesses.add(amendmentProcess.getCommand());
                     }
-                }
-                finally {
+                } finally {
                     doNextAmendmentProcessStage();
                 }
             }
@@ -631,15 +630,13 @@ public class HedgerActor extends AbstractActor {
                         break;
                     case PLACE_ORDERS:
                         if (controller.isStarted()) {
-                            if (prepareTargetOrdersList()) {
+                            if (!amendmentProcess.getTargetOrders().isEmpty()) {
                                 if (amendmentProcess.isConfirmPlaceOrders()) {
                                     amendmentProcess.setCurrentStage(AmendmentProcess.Stage.SHOW_PLACE_CONFIRMATION);
-                                }
-                                else {
+                                } else {
                                     amendmentProcess.setCurrentStage(AmendmentProcess.Stage.PLACE_NEXT_TARGET_ORDER);
                                 }
-                            }
-                            else {
+                            } else {
                                 amendmentProcess.setCurrentStage(AmendmentProcess.Stage.COMPLETED);
                             }
                         } else {
@@ -675,6 +672,7 @@ public class HedgerActor extends AbstractActor {
                     sb.append(String.format("%d %s %s %.0f %s", to.getIdx(), to.getCode(), to.getOrderType(), to.getQty(), to.getViewPx()));
                     sb.append(System.lineSeparator());
                 }
+
                 String message = String.format("Options: %s amendment procedure %s", amendmentProcess.getCommand().getParams(), amendmentProcess.getCurrentStage().toString());
                 emailActorSelection.tell(new EmailActor.Email(message, sb.toString()), self());
             }
@@ -688,13 +686,12 @@ public class HedgerActor extends AbstractActor {
         }
     }
 
-    private boolean prepareTargetOrdersList() {
+    private void prepareTargetOrdersList() {
         List<TargetOrder> orderedTargetOrders = targetOrders.stream()
                 .filter((to) -> Math.abs(to.getQty()) > 0)
                 .sorted(Comparator.comparing((to) -> to.getIdx()))
                 .collect(Collectors.toList());
         amendmentProcess.setTargetOrderQueue(orderedTargetOrders);
-        return !orderedTargetOrders.isEmpty();
     }
 
     private Contract getContract(String code) {
@@ -763,6 +760,7 @@ public class HedgerActor extends AbstractActor {
                         try {
                             targetOrders = StorageUtils.readTargetOrders(m.getFolder());
                             controller.onTargetOrders(targetOrders);
+                            prepareTargetOrdersList();
                             if (amendmentProcess.isPlaceOrders()) {
                                 amendmentProcess.setCurrentStage(AmendmentProcess.Stage.PLACE_ORDERS);
                             } else {
@@ -797,7 +795,8 @@ public class HedgerActor extends AbstractActor {
                                 String dataFolder,
                                 String dataFolderName,
                                 String sRunTime,
-                                String scriptParams) throws IOException {
+                                String scriptParams,
+                                String uptrend) throws IOException {
         Path path = Paths.get(dataFolder);
         if (!Files.exists(path)) {
             Files.createDirectories(path);
@@ -809,7 +808,7 @@ public class HedgerActor extends AbstractActor {
         StorageUtils.storeInputBars(inputTimebars, inputTimeBarsFileName);
         String comandLineParametersFileName = String.format("%s\\command_line.txt", dataFolder);
         try (PrintWriter out = new PrintWriter(comandLineParametersFileName)) {
-            out.println(String.format("\"%s\" \"%s\" \"%s\"", dataFolderName, sRunTime, scriptParams));
+            out.println(String.format("\"%s\" \"%s\" \"%s\" \"%s\"", dataFolderName, sRunTime, scriptParams, uptrend));
         }
     }
 
@@ -835,19 +834,16 @@ public class HedgerActor extends AbstractActor {
                 inputTimebars.addAll(entry.getValue().getBars());
             }
 
-            storeInputData(inputPositions, inputTimebars, DATA_FOLDER, dataFolderName, sRunTime, "");
+            storeInputData(inputPositions, inputTimebars, DATA_FOLDER, dataFolderName, sRunTime, "", "");
             String pythonScript = String.format("%s\\portfolio.py", scriptFolder);
             ProcessBuilder processBuilder = new ProcessBuilder(pythonPath, pythonScript, dataFolderName, sRunTime);
             try {
                 Process process = processBuilder.start();
                 Thread waitThread = new Thread(() -> {
                     try {
-                        if (process.waitFor(20l, TimeUnit.SECONDS)) {
-                            int exitCode = process.exitValue();
-                            controller.onPortfolioResult(exitCode == 0 ? PortfolioResult.SUCCESS : PortfolioResult.FAILED);
-                        } else {
-                            controller.onPortfolioResult(PortfolioResult.TIMEOUT);
-                        }
+                        process.waitFor();
+                        int exitCode = process.exitValue();
+                        controller.onPortfolioResult(exitCode == 0 ? PortfolioResult.SUCCESS : PortfolioResult.FAILED);
                     } catch (Throwable t) {
                         LOGGER.error("", t);
                         controller.onPortfolioResult(PortfolioResult.FAILED);
@@ -869,6 +865,7 @@ public class HedgerActor extends AbstractActor {
         String sRunTime = RUN_TIME_FMT.format(runTime);
         String dataFolderName = RUN_TIME_FILE_NAME_FMT.format(runTime);
         String DATA_FOLDER = String.format("%s\\data\\%s", scriptFolder, dataFolderName);
+        String sUpTrend = controller.isUptrend() ? "True" : "False";
 
         try {
             List<Position> inputPositions = positions
@@ -895,7 +892,7 @@ public class HedgerActor extends AbstractActor {
                 }
             }
 
-            storeInputData(inputPositions, inputTimebars, DATA_FOLDER, dataFolderName, sRunTime, amendmentProcess.getCommand().getParams());
+            storeInputData(inputPositions, inputTimebars, DATA_FOLDER, dataFolderName, sRunTime, amendmentProcess.getCommand().getParams(), sUpTrend);
         } catch (Throwable t) {
             LOGGER.error("", t);
             self().tell(new PythonScriptResult(actorId, PythonScriptResult.Result.DATA_FAILURE, DATA_FOLDER), self());
@@ -903,7 +900,7 @@ public class HedgerActor extends AbstractActor {
         }
 
         String pythonScript = String.format("%s\\delta-hedger.py", scriptFolder);
-        ProcessBuilder processBuilder = new ProcessBuilder(pythonPath, pythonScript, dataFolderName, sRunTime, amendmentProcess.getCommand().getParams());
+        ProcessBuilder processBuilder = new ProcessBuilder(pythonPath, pythonScript, dataFolderName, sRunTime, amendmentProcess.getCommand().getParams(), sUpTrend);
         try {
             Process process = processBuilder.start();
             Thread waitThread = new Thread(() -> {

@@ -8,8 +8,8 @@ import java.util.Set;
 public class AmendmentProcess {
 
     private Integer placedOrder = null;
-    private LinkedList<TargetOrder> targetOrderQueue;
-    private LinkedList<TargetOrder> targetOrders;
+    private LinkedList<TargetOrder> targetOrderQueue = new LinkedList<>();
+    private LinkedList<TargetOrder> targetOrders = new LinkedList<>();
 
     public void placeOrder(int orderId) {
         placedOrder = orderId;
@@ -41,8 +41,8 @@ public class AmendmentProcess {
     }
 
     public void setTargetOrderQueue(List<TargetOrder> targetOrderQueue) {
-        this.targetOrderQueue = new LinkedList<>(targetOrderQueue);
-        this.targetOrders = new LinkedList<>(targetOrderQueue);
+        this.targetOrderQueue.addAll(targetOrderQueue);
+        this.targetOrders.addAll(targetOrderQueue);
     }
 
     public TargetOrder getNextTargetOrder() {

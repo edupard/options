@@ -1,14 +1,15 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
-<?import javafx.scene.paint.*?>
-<?import javafx.scene.text.*?>
-<?import java.lang.*?>
-<?import java.util.*?>
-<?import javafx.scene.*?>
-<?import javafx.scene.control.*?>
-<?import javafx.scene.layout.*?>
+<?import javafx.scene.control.Button?>
+<?import javafx.scene.control.CheckBox?>
+<?import javafx.scene.control.Label?>
+<?import javafx.scene.control.TableColumn?>
+<?import javafx.scene.control.TableView?>
+<?import javafx.scene.control.TextField?>
+<?import javafx.scene.layout.AnchorPane?>
+<?import javafx.scene.text.Font?>
 
-<AnchorPane fx:id="anchor" prefHeight="933.0" prefWidth="1286.0" xmlns="http://javafx.com/javafx/8" xmlns:fx="http://javafx.com/fxml/1" fx:controller="com.skywind.delta_hedger.ui.MainController">
+<AnchorPane fx:id="anchor" prefHeight="933.0" prefWidth="1286.0" xmlns="http://javafx.com/javafx/8.0.141" xmlns:fx="http://javafx.com/fxml/1" fx:controller="com.skywind.delta_hedger.ui.MainController">
    <children>
       <Button layoutX="57.0" layoutY="270.0" mnemonicParsing="false" onAction="#onReloadPositions" text="Reload positions" />
       <TableView fx:id="tblPositions" editable="true" layoutX="57.0" layoutY="56.0" prefHeight="200.0" prefWidth="1187.0">
@@ -100,10 +101,11 @@
          </font>
       </Label>
       <CheckBox fx:id="cbConfirmPlace" layoutX="174.0" layoutY="840.0" mnemonicParsing="false" onAction="#onConfirmPlaceChanged" prefHeight="17.0" prefWidth="95.0" text="confirm place" />
-      <Label fx:id="lblVolMissing" layoutX="763.0" layoutY="842.0" prefHeight="17.0" prefWidth="246.0" style="-fx-text-fill: red;" text="LBL_VOL_MISSING">
+      <Label fx:id="lblVolMissing" layoutX="763.0" layoutY="842.0" prefHeight="17.0" prefWidth="146.0" style="-fx-text-fill: red;" text="LBL_VOL_MISSING">
          <font>
             <Font name="System Bold" size="12.0" />
          </font>
       </Label>
+      <CheckBox fx:id="cbUptrend" layoutX="943.0" layoutY="842.0" mnemonicParsing="false" onAction="#onUptrendChanged" prefHeight="17.0" prefWidth="80.0" text="UP TREND" />
    </children>
 </AnchorPane>
