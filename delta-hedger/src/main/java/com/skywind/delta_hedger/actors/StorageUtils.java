@@ -156,7 +156,7 @@ public class StorageUtils {
                 writer.printRecord(
                         tb.getLocalSymbol(),
                         TIME_FMT.format(tb.getBarTime()),
-                        tb.getDuration(),
+                        tb.getSize(),
                         tb.getOpen(),
                         tb.getHigh(),
                         tb.getLow(),

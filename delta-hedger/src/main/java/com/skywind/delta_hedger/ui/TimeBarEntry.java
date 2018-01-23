@@ -13,6 +13,7 @@ import java.time.format.DateTimeFormatterBuilder;
 public class TimeBarEntry {
     private final StringProperty localSymbol;
     private final StringProperty duration;
+    private final StringProperty size;
     private final StringProperty barTime;
     private final StringProperty open;
     private final StringProperty high;
@@ -24,6 +25,7 @@ public class TimeBarEntry {
     public TimeBarEntry() {
         this.localSymbol = new SimpleStringProperty();
         this.duration = new SimpleStringProperty();
+        this.size = new SimpleStringProperty();
         this.barTime = new SimpleStringProperty();
         this.open = new SimpleStringProperty();
         this.high = new SimpleStringProperty();
@@ -46,6 +48,7 @@ public class TimeBarEntry {
     public void updateUi(HedgerActor.Timebar tb) {
         localSymbol.set(tb.getLocalSymbol());
         duration.set(tb.getDuration());
+        size.set(tb.getSize());
         barTime.set(BAR_TIME_FMT.format(tb.getBarTime()));
 
         open.set(tb.getOpenView());
@@ -63,6 +66,10 @@ public class TimeBarEntry {
 
     public StringProperty durationProperty() {
         return duration;
+    }
+
+    public StringProperty sizeProperty() {
+        return size;
     }
 
     public StringProperty barTimeProperty() {

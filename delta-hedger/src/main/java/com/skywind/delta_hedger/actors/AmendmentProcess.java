@@ -11,6 +11,24 @@ public class AmendmentProcess {
     private LinkedList<TargetOrder> targetOrderQueue = new LinkedList<>();
     private LinkedList<TargetOrder> targetOrders = new LinkedList<>();
 
+    private Set<Integer> histReqIds = new HashSet<>();
+
+    public void addHistRequest(int reqId) {
+        histReqIds.add(reqId);
+    }
+
+    public boolean isHistReq(int reqId) {
+        return histReqIds.contains(reqId);
+    }
+
+    public void onHistReqComplete(int reqId) {
+        histReqIds.remove(reqId);
+    }
+
+    public boolean isAllHistReqCompleted() {
+        return histReqIds.isEmpty();
+    }
+
     public void placeOrder(int orderId) {
         placedOrder = orderId;
     }
@@ -56,6 +74,8 @@ public class AmendmentProcess {
 
 
     public enum Stage {
+        REFRESH_TIME_BARS,
+        WAIT_TIME_BARS,
         CANCEL_ORDERS,
         WAIT_ALL_ORDERS_CANCELLED,
         CALL_PY_SCRIPT,
@@ -69,6 +89,7 @@ public class AmendmentProcess {
         ORDER_REJECTED,
         PYTHON_FAILED,
         PYTHON_TIMEOUT,
+        HMD_FAILURE,
         PYTHON_DATA_FAILURE,
         INTERRUPTED_BY_DISCONNECT,
     }
@@ -98,7 +119,7 @@ public class AmendmentProcess {
     }
 
     public boolean isConfirmPlaceOrders() {
-        return confirmPlaceOrders && placeOrders;
+        return confirmPlaceOrders;
     }
 
     public boolean includeIntoPositions(String underlyingCode) {
@@ -111,16 +132,7 @@ public class AmendmentProcess {
         this.callPyScript = callPyScript;
         this.placeOrders = placeOrders;
         this.confirmPlaceOrders = confirmPlaceOrders;
-        currentStage = Stage.COMPLETED;
-        if (cancelOrders) {
-            currentStage = Stage.CANCEL_ORDERS;
-        } else {
-            if (callPyScript) {
-                currentStage = Stage.CALL_PY_SCRIPT;
-            } else {
-                currentStage = Stage.PLACE_ORDERS;
-            }
-        }
+        currentStage = Stage.REFRESH_TIME_BARS;
     }
 
     public Stage getCurrentStage() {
@@ -151,6 +163,7 @@ public class AmendmentProcess {
                 currentStage == Stage.COMPLETED ||
                 currentStage == Stage.PYTHON_TIMEOUT ||
                 currentStage == Stage.PYTHON_DATA_FAILURE ||
+                currentStage == Stage.HMD_FAILURE ||
                 currentStage == Stage.INTERRUPTED_BY_DISCONNECT;
     }
 }

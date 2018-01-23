@@ -7,11 +7,11 @@ import com.skywind.ib.IbGateway;
 import com.skywind.ib.Utils;
 import com.skywind.trading.spring_akka_integration.EmailActor;
 import com.skywind.trading.spring_akka_integration.MessageSentToExactActorInstance;
-import org.omg.CORBA.Environment;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.beans.factory.config.BeanDefinition;
 import org.springframework.context.annotation.Scope;
+import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Component;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -379,6 +379,8 @@ public class HedgerActor extends AbstractActor {
     public final static Set<Integer> RECONNECTED_TO_IB_ERROR_CODES = new HashSet<>();
     public final static Set<Integer> FATAL_ERROR_CODES = new HashSet<>();
 
+    public final static Set<Integer> HMDS_ERROR_CODES = new HashSet<>();
+
     static {
         DISCONNECTED_FROM_IB_ERROR_CODES.add(1100);
         DISCONNECTED_FROM_IB_ERROR_CODES.add(2110);
@@ -391,6 +393,12 @@ public class HedgerActor extends AbstractActor {
         FATAL_ERROR_CODES.add(502);
         FATAL_ERROR_CODES.add(503);
         FATAL_ERROR_CODES.add(504);
+
+        HMDS_ERROR_CODES.add(162);
+        HMDS_ERROR_CODES.add(165);
+        HMDS_ERROR_CODES.add(166);
+        HMDS_ERROR_CODES.add(366);
+        HMDS_ERROR_CODES.add(386);
     }
 
 
@@ -399,8 +407,35 @@ public class HedgerActor extends AbstractActor {
 
     private Set<String> underlyingsFilter = new HashSet<>();
 
+    @Autowired
+    private Environment env;
+
+    private static final String DEFAULT_VALUE = "";
+
+    public final static class DurationAndSize {
+        private final String size;
+        private final String duration;
+
+        public DurationAndSize(String size, String duration) {
+            this.size = size;
+            this.duration = duration;
+        }
+    }
+
+    private final List<DurationAndSize> barsToRequest = new LinkedList<>();
+
     @PostConstruct
     public void postConstruct() {
+        for (int i = 0; i < 100; ++i) {
+            String size = env.getProperty(String.format("bar.%d.size", i), DEFAULT_VALUE);
+
+            if (size.equals(DEFAULT_VALUE)) {
+                break;
+            }
+            String duration = env.getProperty(String.format("bar.%d.duration", i));
+            barsToRequest.add(new DurationAndSize(size, duration));
+        }
+
         String[] split = underlyings.split(",");
         for (String u : split) {
             underlyingsFilter.add(u);
@@ -425,7 +460,7 @@ public class HedgerActor extends AbstractActor {
                 String message = "Options: reconnected to IB";
                 emailActorSelection.tell(new EmailActor.Email(message, message), self());
                 requestExecutions();
-                refreshTimebars(true);
+//                refreshTimebars(true);
 
                 getContext().system().scheduler().scheduleOnce(
                         Duration.create(2, TimeUnit.SECONDS),
@@ -443,7 +478,7 @@ public class HedgerActor extends AbstractActor {
         }
 
         if (m.getErrorCode() == 2106) {
-            refreshTimebars(true);
+//            refreshTimebars(true);
         }
         if (m.getErrorCode() == 507) {
             String message = "Options: ib socket closed";
@@ -453,18 +488,46 @@ public class HedgerActor extends AbstractActor {
             throw new RuntimeException("Ib socket closed");
         }
 
+        if (HMDS_ERROR_CODES.contains(m.getErrorCode())) {
+            if (amendmentProcess != null && !amendmentProcess.isFinished()) {
+                try {
+                    String message = "Options: HMD request failed";
+                    emailActorSelection.tell(new EmailActor.Email(message, message), self());
+                    if (amendmentProcess.getCurrentStage() == AmendmentProcess.Stage.WAIT_TIME_BARS && amendmentProcess.isHistReq(m.getId())) {
+                        amendmentProcess.setCurrentStage(AmendmentProcess.Stage.HMD_FAILURE);
+                    }
+                } finally {
+                    doNextAmendmentProcessStage();
+                }
+            }
+        }
+
         if (m.getErrorCode() == 200) {
             if (amendmentProcess != null && !amendmentProcess.isFinished()) {
                 try {
-                    if (amendmentProcess.isPlacedOrder(m.getId())) {
-                        // Send email
-                        String message = "Options: amendment process interrupted by disconnect";
-                        emailActorSelection.tell(new EmailActor.Email(message, message), self());
-                        // Set current stage
-                        amendmentProcess.setCurrentStage(AmendmentProcess.Stage.INTERRUPTED_BY_DISCONNECT);
-                        // Schedule new amendment process
-                        pendingProcesses.add(amendmentProcess.getCommand());
+                    switch (amendmentProcess.getCurrentStage()) {
+                        case WAIT_TARGET_ORDER_STATE:
+                            if (amendmentProcess.isPlacedOrder(m.getId())) {
+                                // Send email
+                                String message = "Options: amendment process interrupted by disconnect";
+                                emailActorSelection.tell(new EmailActor.Email(message, message), self());
+                                // Set current stage
+                                amendmentProcess.setCurrentStage(AmendmentProcess.Stage.INTERRUPTED_BY_DISCONNECT);
+                                // Schedule new amendment process
+                                pendingProcesses.add(amendmentProcess.getCommand());
+                            }
+                            break;
+                        case WAIT_TIME_BARS:
+                            // Send email
+                            String message = "Options: amendment process interrupted by disconnect during HMD request";
+                            emailActorSelection.tell(new EmailActor.Email(message, message), self());
+                            // Set current stage
+                            amendmentProcess.setCurrentStage(AmendmentProcess.Stage.INTERRUPTED_BY_DISCONNECT);
+                            // Schedule new amendment process
+                            pendingProcesses.add(amendmentProcess.getCommand());
                     }
+
+
                 } finally {
                     doNextAmendmentProcessStage();
                 }
@@ -602,43 +665,57 @@ public class HedgerActor extends AbstractActor {
                     continue;
                 }
                 switch (amendmentProcess.getCurrentStage()) {
+                    case REFRESH_TIME_BARS:
+                        if (refreshTimebars(true)) {
+                            amendmentProcess.setCurrentStage(AmendmentProcess.Stage.WAIT_TIME_BARS);
+                        } else {
+                            amendmentProcess.setCurrentStage(AmendmentProcess.Stage.CANCEL_ORDERS);
+                        }
+                        break;
                     case CANCEL_ORDERS:
-                        if (openOrders.isEmpty() || !controller.isStarted()) {
-                            if (amendmentProcess.isCallPyScript()) {
+                        if (amendmentProcess.isCancelOrders()) {
+                            if (openOrders.isEmpty() || !controller.isStarted()) {
                                 amendmentProcess.setCurrentStage(AmendmentProcess.Stage.CALL_PY_SCRIPT);
-                            } else if (amendmentProcess.isPlaceOrders()) {
-                                amendmentProcess.setCurrentStage(AmendmentProcess.Stage.PLACE_ORDERS);
+                            } else {
+                                cancelAllOrders();
+                                amendmentProcess.setCurrentStage(AmendmentProcess.Stage.WAIT_ALL_ORDERS_CANCELLED);
+                            }
+                        } else {
+                            amendmentProcess.setCurrentStage(AmendmentProcess.Stage.CALL_PY_SCRIPT);
+                        }
+                        break;
+                    case CALL_PY_SCRIPT:
+                        if (amendmentProcess.isCallPyScript()) {
+                            runPython();
+                            amendmentProcess.setCurrentStage(AmendmentProcess.Stage.WAIT_PY_SCRIPT_COMPLETION);
+                        } else {
+                            amendmentProcess.setCurrentStage(AmendmentProcess.Stage.PLACE_ORDERS);
+                        }
+                        break;
+
+                    case PLACE_ORDERS:
+                        if (amendmentProcess.isPlaceOrders()) {
+                            if (controller.isStarted()) {
+                                if (!amendmentProcess.getTargetOrders().isEmpty()) {
+                                    if (amendmentProcess.isConfirmPlaceOrders()) {
+                                        amendmentProcess.setCurrentStage(AmendmentProcess.Stage.SHOW_PLACE_CONFIRMATION);
+                                    } else {
+                                        amendmentProcess.setCurrentStage(AmendmentProcess.Stage.PLACE_NEXT_TARGET_ORDER);
+                                    }
+                                } else {
+                                    amendmentProcess.setCurrentStage(AmendmentProcess.Stage.COMPLETED);
+                                }
                             } else {
                                 amendmentProcess.setCurrentStage(AmendmentProcess.Stage.COMPLETED);
                             }
                         } else {
-                            cancelAllOrders();
-                            amendmentProcess.setCurrentStage(AmendmentProcess.Stage.WAIT_ALL_ORDERS_CANCELLED);
+                            amendmentProcess.setCurrentStage(AmendmentProcess.Stage.COMPLETED);
                         }
-                        break;
-                    case CALL_PY_SCRIPT:
-                        runPython();
-                        amendmentProcess.setCurrentStage(AmendmentProcess.Stage.WAIT_PY_SCRIPT_COMPLETION);
                         break;
                     case SHOW_PLACE_CONFIRMATION:
                         if (controller.isStarted()) {
                             controller.onConfirmOrderPlace();
                             amendmentProcess.setCurrentStage(AmendmentProcess.Stage.WAITING_PLACE_CONFIRMATION);
-                        } else {
-                            amendmentProcess.setCurrentStage(AmendmentProcess.Stage.COMPLETED);
-                        }
-                        break;
-                    case PLACE_ORDERS:
-                        if (controller.isStarted()) {
-                            if (!amendmentProcess.getTargetOrders().isEmpty()) {
-                                if (amendmentProcess.isConfirmPlaceOrders()) {
-                                    amendmentProcess.setCurrentStage(AmendmentProcess.Stage.SHOW_PLACE_CONFIRMATION);
-                                } else {
-                                    amendmentProcess.setCurrentStage(AmendmentProcess.Stage.PLACE_NEXT_TARGET_ORDER);
-                                }
-                            } else {
-                                amendmentProcess.setCurrentStage(AmendmentProcess.Stage.COMPLETED);
-                            }
                         } else {
                             amendmentProcess.setCurrentStage(AmendmentProcess.Stage.COMPLETED);
                         }
@@ -761,11 +838,7 @@ public class HedgerActor extends AbstractActor {
                             targetOrders = StorageUtils.readTargetOrders(m.getFolder());
                             controller.onTargetOrders(targetOrders);
                             prepareTargetOrdersList();
-                            if (amendmentProcess.isPlaceOrders()) {
-                                amendmentProcess.setCurrentStage(AmendmentProcess.Stage.PLACE_ORDERS);
-                            } else {
-                                amendmentProcess.setCurrentStage(AmendmentProcess.Stage.COMPLETED);
-                            }
+                            amendmentProcess.setCurrentStage(AmendmentProcess.Stage.PLACE_ORDERS);
                         } catch (Throwable t) {
                             String message = String.format("Options: can not read python script result %s %s", m.getResult().toString(), m.getFolder());
                             emailActorSelection.tell(new EmailActor.Email(message, message), self());
@@ -948,13 +1021,13 @@ public class HedgerActor extends AbstractActor {
         }
     }
 
-    private void getOpenOrders() {
+    private void requestOpenOrders() {
         openOrders.clear();
         ibGateway.getClientSocket().reqOpenOrders();
     }
 
     private void onRefreshOpenOrders(RefreshOpenOrders m) {
-        getOpenOrders();
+        requestOpenOrders();
     }
 
     private Map<Integer, HedgerOrder> openOrders = new HashMap<>();
@@ -965,7 +1038,7 @@ public class HedgerActor extends AbstractActor {
                 return;
             }
             if (m.getOrderId() == 0) {
-                getOpenOrders();
+                requestOpenOrders();
                 return;
             }
             if (!underlyingsFilter.contains(m.getContract().symbol())) {
@@ -986,6 +1059,7 @@ public class HedgerActor extends AbstractActor {
                     orderSide = HedgerOrder.Side.SELL;
                     break;
             }
+
             HedgerOrder.State orderState = HedgerOrder.State.ACTIVE;
             switch (m.getOrderState().status()) {
                 case Cancelled:
@@ -1066,15 +1140,7 @@ public class HedgerActor extends AbstractActor {
                         if (orderStatus == OrderStatus.Cancelled) {
                             amendmentProcess.onCancelComplete(m.getOrderId());
                             if (amendmentProcess.isAllOrdersCancelled()) {
-                                if (amendmentProcess.getCurrentStage() == AmendmentProcess.Stage.WAIT_ALL_ORDERS_CANCELLED) {
-                                    if (amendmentProcess.isCallPyScript()) {
-                                        amendmentProcess.setCurrentStage(AmendmentProcess.Stage.CALL_PY_SCRIPT);
-                                    } else if (amendmentProcess.isPlaceOrders()) {
-                                        amendmentProcess.setCurrentStage(AmendmentProcess.Stage.PLACE_ORDERS);
-                                    } else {
-                                        amendmentProcess.setCurrentStage(AmendmentProcess.Stage.COMPLETED);
-                                    }
-                                }
+                                amendmentProcess.setCurrentStage(AmendmentProcess.Stage.CALL_PY_SCRIPT);
                             }
                         }
                     }
@@ -1211,6 +1277,7 @@ public class HedgerActor extends AbstractActor {
     public static final class Timebar {
         private final String localSymbol;
         private final String duration;
+        private final String size;
         private final Instant barTime;
         private final double open;
         private final String openView;
@@ -1225,6 +1292,7 @@ public class HedgerActor extends AbstractActor {
 
         public Timebar(String localSymbol,
                        String duration,
+                       String size,
                        Instant barTime,
                        double open,
                        String openView,
@@ -1238,6 +1306,7 @@ public class HedgerActor extends AbstractActor {
                        Instant lut) {
             this.localSymbol = localSymbol;
             this.duration = duration;
+            this.size = size;
             this.barTime = barTime;
             this.open = open;
             this.openView = openView;
@@ -1299,6 +1368,10 @@ public class HedgerActor extends AbstractActor {
             return duration;
         }
 
+        public String getSize() {
+            return size;
+        }
+
         public Instant getLut() {
             return lut;
         }
@@ -1309,14 +1382,14 @@ public class HedgerActor extends AbstractActor {
             if (o == null || getClass() != o.getClass()) return false;
             Timebar timebar = (Timebar) o;
             return Objects.equals(localSymbol, timebar.localSymbol) &&
-                    Objects.equals(duration, timebar.duration) &&
+                    Objects.equals(size, timebar.size) &&
                     Objects.equals(barTime, timebar.barTime);
         }
 
         @Override
         public int hashCode() {
 
-            return Objects.hash(localSymbol, duration, barTime);
+            return Objects.hash(localSymbol, size, barTime);
         }
     }
 
@@ -1344,10 +1417,12 @@ public class HedgerActor extends AbstractActor {
     public static final class TimeBarRequest {
         private final String localSymbol;
         private final String duration;
+        private final String size;
 
-        public TimeBarRequest(String localSymbol, String duration) {
+        public TimeBarRequest(String localSymbol, String duration, String size) {
             this.localSymbol = localSymbol;
             this.duration = duration;
+            this.size = size;
         }
 
         @Override
@@ -1356,20 +1431,17 @@ public class HedgerActor extends AbstractActor {
             if (o == null || getClass() != o.getClass()) return false;
             TimeBarRequest that = (TimeBarRequest) o;
             return Objects.equals(localSymbol, that.localSymbol) &&
-                    Objects.equals(duration, that.duration);
+                    Objects.equals(duration, that.duration) &&
+                    Objects.equals(size, that.size);
         }
 
         @Override
         public int hashCode() {
-            return Objects.hash(localSymbol, duration);
+            return Objects.hash(localSymbol, duration, size);
         }
 
         public String getLocalSymbol() {
             return localSymbol;
-        }
-
-        public String getDuration() {
-            return duration;
         }
     }
 
@@ -1378,6 +1450,20 @@ public class HedgerActor extends AbstractActor {
     int currentHistDataRequestId = 1;
 
     private void onHistDataEndMsg(IbGateway.HistDataEndMsg m) {
+        if (amendmentProcess != null) {
+            try {
+                if (amendmentProcess.getCurrentStage() == AmendmentProcess.Stage.WAIT_TIME_BARS) {
+                    if (amendmentProcess.isHistReq(m.getReqId())) {
+                        amendmentProcess.onHistReqComplete(m.getReqId());
+                    }
+                    if (amendmentProcess.isAllHistReqCompleted()) {
+                        amendmentProcess.setCurrentStage(AmendmentProcess.Stage.CANCEL_ORDERS);
+                    }
+                }
+            } finally {
+                doNextAmendmentProcessStage();
+            }
+        }
     }
 
     private void onHistDataUpdateMsg(IbGateway.HistDataUpdateMsg m) {
@@ -1401,6 +1487,7 @@ public class HedgerActor extends AbstractActor {
             Timebar tb = new Timebar(
                     r.localSymbol,
                     r.duration,
+                    r.size,
                     BAR_TIME_FMT.parse(bar.time(), Instant::from),
                     bar.open(),
                     PriceUtils.convertPrice(bar.open(), futPriceCoeff),
@@ -1442,39 +1529,85 @@ public class HedgerActor extends AbstractActor {
         refreshTimebars(true);
     }
 
-    private void refreshTimebars(boolean fullUpdate) {
-        if (fullUpdate) {
-            for (Integer reqId : timeBarsRequestMap.keySet()) {
-                ibGateway.getClientSocket().cancelHistoricalData(reqId);
-            }
-            timeBarsRequestMap.clear();
-        }
+    private boolean refreshTimebars(boolean fullUpdate) {
+        // clear UI bars
+        controller.onClearTimeBars();
+        timeBarsRequestMap.clear();
+        currentBars.clear();
         Set<TimeBarRequest> requests = new HashSet<>();
 
         for (Map.Entry<String, Position> e : positions.entrySet()) {
             String localSymbol = e.getKey();
             Position p = e.getValue();
             if (p.getContract().secType() == Types.SecType.FUT) {
-                requests.add(new TimeBarRequest(localSymbol, "4 hours"));
+
+                barsToRequest.stream().forEach(ds->{
+                    requests.add(new TimeBarRequest(localSymbol, ds.duration, ds.size));
+                });
+
+
             } else if (p.getContract().secType() == Types.SecType.FOP) {
                 if (p.isContractDetailsDefined()) {
-                    requests.add(new TimeBarRequest(p.getContractDetails().underSymbol(), "4 hours"));
+                    barsToRequest.stream().forEach(ds->{
+                        requests.add(new TimeBarRequest(p.getContractDetails().underSymbol(), ds.duration, ds.size));
+                    });
                 }
             }
         }
 
-        //Request only new codes
-        requests.removeAll(timeBarsRequestMap.values());
+        if (amendmentProcess != null) {
+            if (amendmentProcess.getCurrentStage() == AmendmentProcess.Stage.REFRESH_TIME_BARS) {
+                for (int i = 0; i < requests.size(); ++i) {
+                    amendmentProcess.addHistRequest(currentHistDataRequestId + i);
+                }
+            }
+        }
+
         for (TimeBarRequest r : requests) {
             Contract c = new Contract();
             c.localSymbol(r.localSymbol);
             c.secType(Types.SecType.FUT);
             c.exchange(exchange);
             c.currency(ccy);
-            ibGateway.getClientSocket().reqHistoricalData(currentHistDataRequestId, c, "", "2 D", r.duration, "TRADES", 0, 1, true, null);
+            ibGateway.getClientSocket().reqHistoricalData(currentHistDataRequestId, c, "", r.duration, r.size, "TRADES", 0, 1, false, null);
             timeBarsRequestMap.put(currentHistDataRequestId, r);
             currentHistDataRequestId++;
         }
+
+        return !requests.isEmpty();
+
+//        if (fullUpdate) {
+//            for (Integer reqId : timeBarsRequestMap.keySet()) {
+//                ibGateway.getClientSocket().cancelHistoricalData(reqId);
+//            }
+//            timeBarsRequestMap.clear();
+//        }
+//        Set<TimeBarRequest> requests = new HashSet<>();
+//
+//        for (Map.Entry<String, Position> e : positions.entrySet()) {
+//            String localSymbol = e.getKey();
+//            Position p = e.getValue();
+//            if (p.getContract().secType() == Types.SecType.FUT) {
+//                requests.add(new TimeBarRequest(localSymbol, "4 hours"));
+//            } else if (p.getContract().secType() == Types.SecType.FOP) {
+//                if (p.isContractDetailsDefined()) {
+//                    requests.add(new TimeBarRequest(p.getContractDetails().underSymbol(), "4 hours"));
+//                }
+//            }
+//        }
+//
+//        //Request only new codes
+//        requests.removeAll(timeBarsRequestMap.values());
+//        for (TimeBarRequest r : requests) {
+//            Contract c = new Contract();
+//            c.localSymbol(r.localSymbol);
+//            c.secType(Types.SecType.FUT);
+//            c.exchange(exchange);
+//            c.currency(ccy);
+//            ibGateway.getClientSocket().reqHistoricalData(currentHistDataRequestId, c, "", "2 D", r.duration, "TRADES", 0, 1, true, null);
+//            timeBarsRequestMap.put(currentHistDataRequestId, r);
+//            currentHistDataRequestId++;
+//        }
     }
 
     private Map<Integer, String> contractDetailsRequestMap = new HashMap<>();
@@ -1496,7 +1629,7 @@ public class HedgerActor extends AbstractActor {
 
     private void onPositionsUpdate() {
         requestContractDetails();
-        refreshTimebars(false);
+//        refreshTimebars(false);
     }
 
     private void onContractDetails(IbGateway.ContractDetailsMsg m) {

@@ -20,6 +20,8 @@ import javafx.scene.control.cell.TextFieldTableCell;
 import javafx.scene.layout.AnchorPane;
 import javafx.beans.value.ChangeListener;
 import javafx.scene.paint.Color;
+import javafx.stage.Modality;
+import javafx.util.Callback;
 import javafx.util.StringConverter;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -137,7 +139,7 @@ public class MainController {
     @FXML
     private TableColumn<TimeBarEntry, String> colTbCode;
     @FXML
-    private TableColumn<TimeBarEntry, String> colTbDuration;
+    private TableColumn<TimeBarEntry, String> colTbSize;
     @FXML
     private TableColumn<TimeBarEntry, String> colTbBarTime;
     @FXML
@@ -223,13 +225,20 @@ public class MainController {
             ButtonType buttonTypeNo = new ButtonType("No", ButtonBar.ButtonData.CANCEL_CLOSE);
 
             alert.getButtonTypes().setAll(buttonTypeYes, buttonTypeNo);
+            alert.initModality(Modality.NONE);
 
-            Optional<ButtonType> result = alert.showAndWait();
-            boolean proceed = false;
-            if (result.get() == buttonTypeYes) {
-                proceed = true;
-            }
-            hedgerActor.tell(new HedgerActor.PlaceConfirmation(proceed), null);
+            alert.setResultConverter(new Callback<ButtonType, ButtonType>() {
+                @Override
+                public ButtonType call(ButtonType param) {
+                    boolean proceed = false;
+                    if (param == buttonTypeYes) {
+                        proceed = true;
+                    }
+                    hedgerActor.tell(new HedgerActor.PlaceConfirmation(proceed), null);
+                    return param;
+                }
+            });
+            alert.show();
         });
     }
 
@@ -251,6 +260,12 @@ public class MainController {
         });
     }
 
+    public void onClearTimeBars() {
+        Platform.runLater(()->{
+            timeBarsDataMap.clear();
+            timeBarData.clear();
+        });
+    }
 
 
     public static final class UpdateUiPositionsBatch {
@@ -446,7 +461,7 @@ public class MainController {
         tblTargetOrders.setItems(sortedToData);
 
         colTbCode.setCellValueFactory(cellData -> cellData.getValue().localSymbolProperty());
-        colTbDuration.setCellValueFactory(cellData -> cellData.getValue().durationProperty());
+        colTbSize.setCellValueFactory(cellData -> cellData.getValue().sizeProperty());
         colTbBarTime.setCellValueFactory(cellData -> cellData.getValue().barTimeProperty());
 
         colTbOpen.setCellValueFactory(cellData -> cellData.getValue().openProperty());
@@ -715,6 +730,7 @@ public class MainController {
                 case PYTHON_FAILED:
                 case PYTHON_TIMEOUT:
                 case PYTHON_DATA_FAILURE:
+                case HMD_FAILURE:
                 case INTERRUPTED_BY_DISCONNECT:
                     lblProgress.setTextFill(Color.RED);
                     break;
