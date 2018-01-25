@@ -62,7 +62,7 @@ public class CronSchedullerComponent implements SchedulingConfigurer {
             String schedule = env.getProperty(String.format("cron.task.%d", i), DEFAULT_VALUE);
 
             if (schedule.equals(DEFAULT_VALUE)) {
-                break;
+                continue;
             }
             String scriptParams = env.getProperty(String.format("cron.task.%d.param", i));
             boolean triggerOnTrade = Boolean.parseBoolean(env.getProperty(String.format("cron.task.%d.trigger", i)));

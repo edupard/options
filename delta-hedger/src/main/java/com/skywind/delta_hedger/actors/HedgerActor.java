@@ -430,7 +430,7 @@ public class HedgerActor extends AbstractActor {
             String size = env.getProperty(String.format("bar.%d.size", i), DEFAULT_VALUE);
 
             if (size.equals(DEFAULT_VALUE)) {
-                break;
+                continue;
             }
             String duration = env.getProperty(String.format("bar.%d.duration", i));
             barsToRequest.add(new DurationAndSize(size, duration));
