@@ -779,7 +779,7 @@ public class HedgerActor extends AbstractActor {
                             List<TargetOrder> immediateExecution = new LinkedList<>();
                             for (TargetOrder to : targetOrders) {
                                 if (maxSizeTo != null) {
-                                    if (Math.abs(to.getQty()) > Math.abs(to.getQty())) {
+                                    if (Math.abs(to.getQty()) > Math.abs(maxSizeTo.getQty())) {
                                         maxSizeTo = to;
                                     }
                                 }
