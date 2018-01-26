@@ -70,7 +70,7 @@
       <Button layoutX="57.0" layoutY="787.0" mnemonicParsing="false" onAction="#onRefreshOpenOrders" text="Refresh open orders" />
       <CheckBox fx:id="cbIncludeManualOrders" layoutX="209.0" layoutY="791.0" mnemonicParsing="false" onAction="#onIncludeManualOrdersChanged" selected="true" text="include manual orders" />
       <Button layoutX="57.0" layoutY="877.0" mnemonicParsing="false" onAction="#onRunPython" text="Run" />
-      <Label fx:id="lblProgress" layoutX="221.0" layoutY="881.0" prefHeight="17.0" prefWidth="472.0" text="LBL_PROGRESS">
+      <Label fx:id="lblProgress" layoutX="511.0" layoutY="881.0" prefHeight="17.0" prefWidth="472.0" text="LBL_PROGRESS">
          <font>
             <Font name="System Bold" size="12.0" />
          </font>
@@ -94,7 +94,7 @@
       <CheckBox fx:id="cbCancelOrders" layoutX="181.0" layoutY="841.0" mnemonicParsing="false" onAction="#onCancelOrdersChanged" text="cancel orders" />
       <CheckBox fx:id="cbRunPython" layoutX="398.0" layoutY="841.0" mnemonicParsing="false" onAction="#onRunPythonChanged" text="run python" />
       <CheckBox fx:id="cbPlaceOrders" layoutX="497.0" layoutY="842.0" mnemonicParsing="false" onAction="#onPlaceOrdersChanged" text="place orders" />
-      <TextField fx:id="tfParam" layoutX="119.0" layoutY="877.0" prefHeight="25.0" prefWidth="92.0" />
+      <TextField fx:id="tfParam" layoutX="119.0" layoutY="877.0" prefHeight="25.0" prefWidth="344.0" />
       <CheckBox fx:id="cbIncludeOptions" layoutX="181.0" layoutY="274.0" mnemonicParsing="false" onAction="#onIncludeOptionsChanged" prefHeight="17.0" prefWidth="115.0" selected="true" text="include options" />
       <CheckBox fx:id="cbIncludeFutures" layoutX="301.0" layoutY="274.0" mnemonicParsing="false" onAction="#onIncludeFuturesChanged" prefHeight="17.0" prefWidth="115.0" selected="true" text="include futures" />
       <Button fx:id="btnStartStop" layoutX="706.0" layoutY="838.0" mnemonicParsing="false" onAction="#onStartStop" text="Start" />

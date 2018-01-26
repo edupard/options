@@ -773,7 +773,51 @@ public class HedgerActor extends AbstractActor {
                         break;
                     case SHOW_PLACE_CONFIRMATION:
                         if (controller.isStarted()) {
-                            controller.onConfirmOrderPlace();
+                            LinkedList<TargetOrder> targetOrders = amendmentProcess.getTargetOrders();
+                            StringBuilder sb = new StringBuilder();
+                            TargetOrder maxSizeTo = null;
+                            List<TargetOrder> immediateExecution = new LinkedList<>();
+                            for (TargetOrder to : targetOrders) {
+                                if (maxSizeTo != null) {
+                                    if (Math.abs(to.getQty()) > Math.abs(to.getQty())) {
+                                        maxSizeTo = to;
+                                    }
+                                }
+                                else {
+                                    maxSizeTo = to;
+                                }
+                                if (to.getOrderType().equals("MKT")) {
+                                    immediateExecution.add(to);
+                                }
+                                else {
+                                    Position p = positions.get(to.getCode());
+                                    if (p != null) {
+                                        Timebar lastBar = p.getLastBar();
+                                        if (lastBar != null) {
+                                            if (to.getQty() > 0) {
+                                                if (lastBar.getClose() >= to.getPx()) {
+                                                    immediateExecution.add(to);
+                                                }
+                                            }
+                                            else if (to.getQty() < 0) {
+                                                if (lastBar.getClose() <= to.getPx()) {
+                                                    immediateExecution.add(to);
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            if (maxSizeTo != null) {
+                                sb.append(String.format("Max qty: %.0f", maxSizeTo.getQty()));
+                                sb.append(System.lineSeparator());
+                            }
+                            for (TargetOrder to : immediateExecution) {
+                                sb.append(String.format("Immediate fill %.0f %s", to.getQty(), to.getViewPx()));
+                                sb.append(System.lineSeparator());
+                            }
+
+                            controller.onConfirmOrderPlace(sb.toString());
                             amendmentProcess.setCurrentStage(AmendmentProcess.Stage.WAITING_PLACE_CONFIRMATION);
                         } else {
                             amendmentProcess.setCurrentStage(AmendmentProcess.Stage.COMPLETED);
@@ -1570,6 +1614,7 @@ public class HedgerActor extends AbstractActor {
 
             Position p = positions.get(r.localSymbol);
             if (p != null) {
+                p.setLastBar(tb);
                 p.setLastViewPx(PriceUtils.convertPrice(bar.close(), futPriceCoeff));
                 MainController.UpdateUiPositionsBatch uiUpdates = new MainController.UpdateUiPositionsBatch(false);
                 uiUpdates.addAction(MainController.UpdateUiPositionsBatch.Action.UPDATE, r.localSymbol, p);

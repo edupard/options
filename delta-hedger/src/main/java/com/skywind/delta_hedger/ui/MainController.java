@@ -216,11 +216,11 @@ public class MainController {
         });
     }
 
-    public void onConfirmOrderPlace() {
+    public void onConfirmOrderPlace(String message) {
         Platform.runLater(()->{
             Alert alert = new Alert(Alert.AlertType.CONFIRMATION);
-            alert.setTitle("Confirmation");
-            alert.setContentText("Do you really want to place orders?");
+            alert.setTitle("Do you really want to place orders?");
+            alert.setContentText(message);
 
             ButtonType buttonTypeYes = new ButtonType("Yes");
             ButtonType buttonTypeNo = new ButtonType("No", ButtonBar.ButtonData.CANCEL_CLOSE);
@@ -247,8 +247,8 @@ public class MainController {
     public void onConfirmCancelOrders() {
         Platform.runLater(() -> {
             Alert alert = new Alert(Alert.AlertType.CONFIRMATION);
-            alert.setTitle("Confirmation");
-            alert.setContentText("Do you really want to cancel orders?");
+            alert.setTitle("Do you really want to cancel orders?");
+            alert.setContentText("");
 
             ButtonType buttonTypeYes = new ButtonType("Yes");
             ButtonType buttonTypeNo = new ButtonType("No", ButtonBar.ButtonData.CANCEL_CLOSE);

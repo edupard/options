@@ -26,6 +26,7 @@ public class Position {
     private Trade lastTrade;
     private boolean selected;
     private String lastViewPx = "";
+    private HedgerActor.Timebar lastBar;
 
     public Position(boolean selected, Contract contract, double pos, double posPx, double vol, double ir, Trade lastTrade) {
         this.selected = selected;
@@ -177,5 +178,13 @@ public class Position {
 
     public String getLastViewPx() {
         return lastViewPx;
+    }
+
+    public void setLastBar(HedgerActor.Timebar lastBar) {
+        this.lastBar = lastBar;
+    }
+
+    public HedgerActor.Timebar getLastBar() {
+        return lastBar;
     }
 }
