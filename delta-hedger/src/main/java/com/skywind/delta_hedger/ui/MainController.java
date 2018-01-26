@@ -7,6 +7,7 @@ import com.skywind.delta_hedger.actors.*;
 import com.skywind.spring_javafx_integration.ui.FlashingTableCell;
 import com.skywind.spring_javafx_integration.ui.FormatedCellFactory;
 import javafx.application.Platform;
+import javafx.beans.InvalidationListener;
 import javafx.beans.value.ObservableValue;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
@@ -242,6 +243,34 @@ public class MainController {
         });
     }
 
+
+    public void onConfirmCancelOrders() {
+        Platform.runLater(() -> {
+            Alert alert = new Alert(Alert.AlertType.CONFIRMATION);
+            alert.setTitle("Confirmation");
+            alert.setContentText("Do you really want to cancel orders?");
+
+            ButtonType buttonTypeYes = new ButtonType("Yes");
+            ButtonType buttonTypeNo = new ButtonType("No", ButtonBar.ButtonData.CANCEL_CLOSE);
+
+            alert.getButtonTypes().setAll(buttonTypeYes, buttonTypeNo);
+            alert.initModality(Modality.NONE);
+
+            alert.setResultConverter(new Callback<ButtonType, ButtonType>() {
+                @Override
+                public ButtonType call(ButtonType param) {
+                    boolean proceed = false;
+                    if (param == buttonTypeYes) {
+                        proceed = true;
+                    }
+                    hedgerActor.tell(new HedgerActor.CancelConfirmation(proceed), null);
+                    return param;
+                }
+            });
+            alert.show();
+        });
+    }
+
     public void onSciptParams(String scriptParam) {
         Platform.runLater(()->{
             tfParam.setText(scriptParam);
@@ -340,12 +369,20 @@ public class MainController {
     @Value("${script.params:BASIC}")
     private String scriptParams;
 
+    @Value("${uptrend:false}")
+    private volatile boolean uptrend;
+
     @PostConstruct
     public void init() {
         tfParam.setText(scriptParams);
+        cbUptrend.setSelected(uptrend);
         tfParam.textProperty().addListener((observable, oldValue, newValue) -> {
             saveApplicationProperties();
         });
+        cbUptrend.selectedProperty().addListener((observable, oldValue, newValue) -> {
+            saveApplicationProperties();
+        });
+
 
         lblVolMissing.setText("");
         lblAccount.setText(String.format("account: %s", account));
@@ -516,6 +553,7 @@ public class MainController {
             // create and set properties into properties object
             Properties props = new Properties();
             props.setProperty("script.params", tfParam.getText());
+            props.setProperty("uptrend", new Boolean(cbUptrend.isSelected()).toString());
             // get or create the file
             File f = new File("user.properties");
             OutputStream out = new FileOutputStream( f );
@@ -678,6 +716,7 @@ public class MainController {
 
     private volatile boolean confirmPlace = false;
 
+    @FXML
     public void onConfirmPlaceChanged() {
         confirmPlace = cbConfirmPlace.isSelected();
     }
@@ -686,11 +725,24 @@ public class MainController {
         return confirmPlace;
     }
 
+    @FXML
+    private CheckBox cbConfirmCancel;
+
+    private volatile boolean confirmCancel = false;
+
+    @FXML
+    public void onConfirmCancelChanged() {
+        confirmCancel = cbConfirmCancel.isSelected();
+    }
+
+    public boolean isConfirmCancel() {
+        return confirmCancel;
+    }
+
+
 
     @FXML
     private CheckBox cbUptrend;
-
-    private volatile boolean uptrend = false;
 
     @FXML
     public void onUptrendChanged() {

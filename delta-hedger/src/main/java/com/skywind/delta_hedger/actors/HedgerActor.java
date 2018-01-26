@@ -221,6 +221,18 @@ public class HedgerActor extends AbstractActor {
         }
     }
 
+    public static final class CancelConfirmation {
+        private final boolean proceed;
+
+        public CancelConfirmation(boolean proceed) {
+            this.proceed = proceed;
+        }
+
+        public boolean isProceed() {
+            return proceed;
+        }
+    }
+
 
     @Override
     public Receive createReceive() {
@@ -340,6 +352,9 @@ public class HedgerActor extends AbstractActor {
                 })
                 .match(PlaceConfirmation.class, m -> {
                     onPlaceConfirmation(m);
+                })
+                .match(CancelConfirmation.class, m -> {
+                    onCancelConfirmation(m);
                 })
                 .match(RefreshDaysToExpiration.class, m -> {
                     onRefreshDaysToExpiration(m);
@@ -637,6 +652,23 @@ public class HedgerActor extends AbstractActor {
 
     private AmendmentProcess amendmentProcess = null;
 
+    private void onCancelConfirmation(CancelConfirmation m) {
+        if (amendmentProcess != null) {
+            try {
+                if (amendmentProcess.getCurrentStage() == AmendmentProcess.Stage.WAITING_CANCEL_CONFIRMATION) {
+                    if (m.isProceed()) {
+                        amendmentProcess.setCurrentStage(AmendmentProcess.Stage.CANCELLING);
+
+                    } else {
+                        amendmentProcess.setCurrentStage(AmendmentProcess.Stage.CALL_PY_SCRIPT);
+                    }
+                }
+            } finally {
+                doNextAmendmentProcessStage();
+            }
+        }
+    }
+
     private void onPlaceConfirmation(PlaceConfirmation m) {
         if (amendmentProcess != null) {
             try {
@@ -674,16 +706,43 @@ public class HedgerActor extends AbstractActor {
                         break;
                     case CANCEL_ORDERS:
                         if (amendmentProcess.isCancelOrders()) {
-                            if (openOrders.isEmpty() || !controller.isStarted()) {
+                            if (controller.isStarted()) {
+                                if (!openOrders.isEmpty()) {
+                                    if (amendmentProcess.isConfirmCancelOrders()) {
+                                        amendmentProcess.setCurrentStage(AmendmentProcess.Stage.SHOW_CANCEL_CONFIRMATION);
+                                    } else {
+                                        amendmentProcess.setCurrentStage(AmendmentProcess.Stage.CANCELLING);
+                                    }
+                                }
+                                else {
+                                    amendmentProcess.setCurrentStage(AmendmentProcess.Stage.CALL_PY_SCRIPT);
+                                }
+                            }
+                            else{
                                 amendmentProcess.setCurrentStage(AmendmentProcess.Stage.CALL_PY_SCRIPT);
-                            } else {
-                                cancelAllOrders();
-                                amendmentProcess.setCurrentStage(AmendmentProcess.Stage.WAIT_ALL_ORDERS_CANCELLED);
                             }
                         } else {
                             amendmentProcess.setCurrentStage(AmendmentProcess.Stage.CALL_PY_SCRIPT);
                         }
                         break;
+                    case SHOW_CANCEL_CONFIRMATION:
+                        if (controller.isStarted()) {
+                            controller.onConfirmCancelOrders();
+                            amendmentProcess.setCurrentStage(AmendmentProcess.Stage.WAITING_CANCEL_CONFIRMATION);
+                        } else {
+                            amendmentProcess.setCurrentStage(AmendmentProcess.Stage.CALL_PY_SCRIPT);
+                        }
+                        break;
+                    case CANCELLING:
+                        if (controller.isStarted()) {
+                            cancelAllOrders();
+                            amendmentProcess.setCurrentStage(AmendmentProcess.Stage.WAIT_ALL_ORDERS_CANCELLED);
+                        }
+                        else {
+                            amendmentProcess.setCurrentStage(AmendmentProcess.Stage.CALL_PY_SCRIPT);
+                        }
+                        break;
+
                     case CALL_PY_SCRIPT:
                         if (amendmentProcess.isCallPyScript()) {
                             runPython();
@@ -1014,7 +1073,7 @@ public class HedgerActor extends AbstractActor {
         }
         if (!pendingProcesses.isEmpty()) {
             RunAmendmentProcess m = pendingProcesses.pollFirst();
-            amendmentProcess = new AmendmentProcess(m, controller.isCancelOrders(), controller.isRunPython(), controller.isPlaceOrders(), m.isManual() || controller.isConfirmPlace());
+            amendmentProcess = new AmendmentProcess(m, controller.isCancelOrders(), m.isManual() || controller.isConfirmCancel(),controller.isRunPython(), controller.isPlaceOrders(), m.isManual() || controller.isConfirmPlace());
             String message = String.format("Options: starting %s amendment procedure", m.getParams());
             emailActorSelection.tell(new EmailActor.Email(message, message), self());
             doNextAmendmentProcessStage();

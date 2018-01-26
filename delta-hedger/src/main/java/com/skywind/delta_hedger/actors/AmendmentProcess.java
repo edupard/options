@@ -13,6 +13,7 @@ public class AmendmentProcess {
 
     private Set<Integer> histReqIds = new HashSet<>();
 
+
     public void addHistRequest(int reqId) {
         histReqIds.add(reqId);
     }
@@ -72,17 +73,24 @@ public class AmendmentProcess {
         return null;
     }
 
+    public boolean isConfirmCancelOrders() {
+        return confirmCancelOrders;
+    }
+
 
     public enum Stage {
         REFRESH_TIME_BARS,
         WAIT_TIME_BARS,
         CANCEL_ORDERS,
+        SHOW_CANCEL_CONFIRMATION,
+        WAITING_CANCEL_CONFIRMATION,
+        CANCELLING,
         WAIT_ALL_ORDERS_CANCELLED,
         CALL_PY_SCRIPT,
         WAIT_PY_SCRIPT_COMPLETION,
+        PLACE_ORDERS,
         SHOW_PLACE_CONFIRMATION,
         WAITING_PLACE_CONFIRMATION,
-        PLACE_ORDERS,
         PLACE_NEXT_TARGET_ORDER,
         WAIT_TARGET_ORDER_STATE,
         COMPLETED,
@@ -100,6 +108,7 @@ public class AmendmentProcess {
     private final boolean callPyScript;
     private final boolean placeOrders;
     private final boolean confirmPlaceOrders;
+    private final boolean confirmCancelOrders;
     private final HedgerActor.RunAmendmentProcess command;
 
     public HedgerActor.RunAmendmentProcess getCommand() {
@@ -126,9 +135,10 @@ public class AmendmentProcess {
         return command.includeIntoPositions(underlyingCode);
     }
 
-    public AmendmentProcess(HedgerActor.RunAmendmentProcess command, boolean cancelOrders, boolean callPyScript, boolean placeOrders, boolean confirmPlaceOrders) {
+    public AmendmentProcess(HedgerActor.RunAmendmentProcess command, boolean cancelOrders, boolean confirmCancelOrders, boolean callPyScript, boolean placeOrders, boolean confirmPlaceOrders) {
         this.command = command;
         this.cancelOrders = cancelOrders;
+        this.confirmCancelOrders= confirmCancelOrders;
         this.callPyScript = callPyScript;
         this.placeOrders = placeOrders;
         this.confirmPlaceOrders = confirmPlaceOrders;
