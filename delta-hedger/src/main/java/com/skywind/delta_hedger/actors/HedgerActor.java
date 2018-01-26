@@ -1253,7 +1253,7 @@ public class HedgerActor extends AbstractActor {
 //
 //                }
                 // trigger amendment on fut trades only
-                if (controller.isTriggerOnTrade() && m.getContract().secType() == Types.SecType.FOP) {
+                if (controller.isTriggerOnTrade() && m.getContract().secType() == Types.SecType.FUT) {
                     HashSet<String> targetUnderlyings = new HashSet<>();
                     targetUnderlyings.add(m.getContract().localSymbol());
                     self().tell(new RunAmendmentProcess(targetUnderlyings, controller.getScriptParams(), false), self());
