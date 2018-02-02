@@ -88,7 +88,7 @@ public class CronSchedullerComponent implements SchedulingConfigurer {
             ct = new CronTask(
                     () -> {
                         controller.onSciptParams(c.scriptParam);
-                        hedgerActor.tell(new HedgerActor.RunAmendmentProcess(c.targetUnderlyings, c.scriptParam, false), null);
+                        hedgerActor.tell(new HedgerActor.RunAmendmentProcess(c.targetUnderlyings, c.scriptParam, HedgerActor.RunAmendmentProcess.TriggerType.CRON), null);
                         controller.changeTriggerOnTrade(c.triggerOnTrade);
                     },
                     c.schedule);

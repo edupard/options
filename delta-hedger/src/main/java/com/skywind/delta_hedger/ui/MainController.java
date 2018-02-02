@@ -87,6 +87,8 @@ public class MainController {
     @FXML
     private TableColumn<PositionEntry, String> colLastViewPx;
     @FXML
+    private TableColumn<PositionEntry, String> colLastPxTime;
+    @FXML
     private TableColumn<PositionEntry, String> colLastPos;
     @FXML
     private TableColumn<PositionEntry, String> colLastTime;
@@ -466,6 +468,7 @@ public class MainController {
         colLastViewPx.setCellFactory(c -> {
             return new FlashingTableCell<>();
         });
+        colLastPxTime.setCellValueFactory(cellData -> cellData.getValue().lastPxTimeProperty());
 
 
         colLastPos.setCellValueFactory(cellData -> cellData.getValue().lastPosProperty());
@@ -598,6 +601,11 @@ public class MainController {
     @FXML
     public void onRefreshTimebars() {
         hedgerActor.tell(new HedgerActor.RefreshTimebars(), null);
+    }
+
+    @FXML
+    public void onRefreshMd() {
+        hedgerActor.tell(new HedgerActor.RefreshMd(), null);
     }
 
     @FXML
@@ -762,7 +770,7 @@ public class MainController {
 
     @FXML
     public void onRunPython() {
-        hedgerActor.tell(new HedgerActor.RunAmendmentProcess(new HashSet<>(), getScriptParams(), true), null);
+        hedgerActor.tell(new HedgerActor.RunAmendmentProcess(new HashSet<>(), getScriptParams(), HedgerActor.RunAmendmentProcess.TriggerType.MANUAL), null);
     }
 
     @FXML

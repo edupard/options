@@ -73,11 +73,6 @@ public class AmendmentProcess {
         return null;
     }
 
-    public boolean isConfirmCancelOrders() {
-        return confirmCancelOrders;
-    }
-
-
     public enum Stage {
         REFRESH_TIME_BARS,
         WAIT_TIME_BARS,
@@ -104,44 +99,28 @@ public class AmendmentProcess {
 
     private Stage currentStage;
 
-    private final boolean cancelOrders;
-    private final boolean callPyScript;
-    private final boolean placeOrders;
-    private final boolean confirmPlaceOrders;
-    private final boolean confirmCancelOrders;
     private final HedgerActor.RunAmendmentProcess command;
 
     public HedgerActor.RunAmendmentProcess getCommand() {
         return command;
     }
 
-    public boolean isCancelOrders() {
-        return cancelOrders;
-    }
-
-    public boolean isCallPyScript() {
-        return callPyScript;
-    }
-
-    public boolean isPlaceOrders() {
-        return placeOrders;
-    }
-
-    public boolean isConfirmPlaceOrders() {
-        return confirmPlaceOrders;
-    }
-
     public boolean includeIntoPositions(String underlyingCode) {
         return command.includeIntoPositions(underlyingCode);
     }
 
-    public AmendmentProcess(HedgerActor.RunAmendmentProcess command, boolean cancelOrders, boolean confirmCancelOrders, boolean callPyScript, boolean placeOrders, boolean confirmPlaceOrders) {
+    private volatile boolean placeAllowed = false;
+
+    public void allowPlace() {
+        placeAllowed = true;
+    }
+
+    public boolean isPlaceAllowed() {
+        return placeAllowed;
+    }
+
+    public AmendmentProcess(HedgerActor.RunAmendmentProcess command) {
         this.command = command;
-        this.cancelOrders = cancelOrders;
-        this.confirmCancelOrders= confirmCancelOrders;
-        this.callPyScript = callPyScript;
-        this.placeOrders = placeOrders;
-        this.confirmPlaceOrders = confirmPlaceOrders;
         currentStage = Stage.REFRESH_TIME_BARS;
     }
 

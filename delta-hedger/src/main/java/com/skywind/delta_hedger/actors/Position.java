@@ -25,8 +25,10 @@ public class Position {
     private double ir;
     private Trade lastTrade;
     private boolean selected;
+    private IbGateway.TickPrice lastTick;
+    private Instant lastPxInstant;
     private String lastViewPx = "";
-    private HedgerActor.Timebar lastBar;
+    private String lastPxTime = "";
 
     public Position(boolean selected, Contract contract, double pos, double posPx, double vol, double ir, Trade lastTrade) {
         this.selected = selected;
@@ -48,7 +50,9 @@ public class Position {
         this.expiry = other.expiry;
         this.lastTrade = other.lastTrade;
         this.selected = other.selected;
+        this.lastTick = other.lastTick;
         this.lastViewPx = other.lastViewPx;
+        this.lastPxTime = other.lastPxTime;
     }
 
     public Contract getContract() {
@@ -172,19 +176,31 @@ public class Position {
         this.selected = selected;
     }
 
-    public void setLastViewPx(String lastViewPx) {
+    private static DateTimeFormatter LAST_PX_TIME_FMT = new DateTimeFormatterBuilder()
+            .appendPattern("yyyyMMdd HH:mm:ss")
+            .toFormatter()
+            .withZone(ZoneId.systemDefault());
+
+    public void setLastTick(IbGateway.TickPrice lastTick, String lastViewPx, Instant lastPxInstant) {
+        this.lastTick = lastTick;
         this.lastViewPx = lastViewPx;
+        this.lastPxInstant = lastPxInstant;
+        this.lastPxTime = LAST_PX_TIME_FMT.format(lastPxInstant);
+    }
+
+    public IbGateway.TickPrice getLastTick() {
+        return lastTick;
     }
 
     public String getLastViewPx() {
         return lastViewPx;
     }
 
-    public void setLastBar(HedgerActor.Timebar lastBar) {
-        this.lastBar = lastBar;
+    public String getLastPxTime() {
+        return lastPxTime;
     }
 
-    public HedgerActor.Timebar getLastBar() {
-        return lastBar;
+    public Instant getLastPxInstant() {
+        return lastPxInstant;
     }
 }

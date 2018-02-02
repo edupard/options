@@ -488,10 +488,15 @@ public class LogTraderActor extends AbstractActor {
         requestMarketData();
         requestExecutions();
         requestAccountUpdates();
+
+
+        getContext().system().scheduler().scheduleOnce(
+                Duration.create(2, TimeUnit.SECONDS),
+                self(),
+                new ReloadPosition(),
+                getContext().dispatcher(),
+                self());
     }
-
-
-
 
     //OK
     private void onReloadPosition(ReloadPosition m) {

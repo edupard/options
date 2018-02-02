@@ -25,6 +25,7 @@ public class PositionEntry {
     private final DoubleProperty ir;
     private final DoubleProperty vol;
     private final StringProperty lastViewPx;
+    private final StringProperty lastPxTime;
     private final StringProperty lastPos;
     private final StringProperty lastTime;
 
@@ -43,6 +44,7 @@ public class PositionEntry {
         this.ir = new SimpleDoubleProperty();
         this.vol = new SimpleDoubleProperty();
         this.lastViewPx = new SimpleStringProperty();
+        this.lastPxTime = new SimpleStringProperty();
         this.lastPos = new SimpleStringProperty();
         this.lastTime = new SimpleStringProperty();
     }
@@ -76,7 +78,6 @@ public class PositionEntry {
             expiry.set("-");
             days.set(0);
         }
-        // TODO: update days periodically
 
         strike.set(p.getContract().strike());
         // how to propogate to script
@@ -88,6 +89,9 @@ public class PositionEntry {
         selected.set(p.isSelected());
 
         lastViewPx.set(p.getLastViewPx());
+        lastPxTime.set(p.getLastPxTime());
+
+
         if (p.getLastTrade() != null) {
             lastPos.set(String.format("%.0f", p.getLastTrade().getPos()));
             lastTime.set(p.getLastTrade().getTime());
@@ -149,6 +153,8 @@ public class PositionEntry {
     public StringProperty lastTimeProperty() {
         return lastTime;
     }
+
+    public StringProperty lastPxTimeProperty() { return lastPxTime; }
 
     public StringProperty lastViewPxProperty() {
         return lastViewPx;

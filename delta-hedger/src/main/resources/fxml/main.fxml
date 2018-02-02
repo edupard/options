@@ -13,10 +13,10 @@
 <?import javafx.scene.layout.AnchorPane?>
 <?import javafx.scene.text.Font?>
 
-<AnchorPane fx:id="anchor" prefHeight="933.0" prefWidth="1286.0" xmlns="http://javafx.com/javafx/8" xmlns:fx="http://javafx.com/fxml/1" fx:controller="com.skywind.delta_hedger.ui.MainController">
+<AnchorPane fx:id="anchor" prefHeight="933.0" prefWidth="1376.0" xmlns="http://javafx.com/javafx/8" xmlns:fx="http://javafx.com/fxml/1" fx:controller="com.skywind.delta_hedger.ui.MainController">
    <children>
       <Button layoutX="57.0" layoutY="270.0" mnemonicParsing="false" onAction="#onReloadPositions" text="Reload positions" />
-      <TableView fx:id="tblPositions" editable="true" layoutX="57.0" layoutY="56.0" prefHeight="200.0" prefWidth="1187.0">
+      <TableView fx:id="tblPositions" editable="true" layoutX="57.0" layoutY="56.0" prefHeight="200.0" prefWidth="1300.0">
         <columns>
             <TableColumn fx:id="colSelected" prefWidth="60.0" text="selected" />
           <TableColumn fx:id="colCode" prefWidth="136.0" text="code" />
@@ -30,8 +30,9 @@
             <TableColumn fx:id="colIr" prefWidth="61.0" text="ir" />
             <TableColumn fx:id="colVol" prefWidth="59.0" text="vol" />
             <TableColumn fx:id="colLastViewPx" prefWidth="87.0" text="last px" />
-            <TableColumn fx:id="colLastPos" prefWidth="61.0" text="last pos" />
-            <TableColumn fx:id="colLastTime" prefWidth="176.0" text="at" />
+            <TableColumn fx:id="colLastPxTime" prefWidth="151.0" text="at" />
+            <TableColumn fx:id="colLastPos" prefWidth="56.0" text="last pos" />
+            <TableColumn fx:id="colLastTime" prefWidth="145.0" text="at" />
         </columns>
       </TableView>
       <Button layoutX="57.0" layoutY="531.0" mnemonicParsing="false" onAction="#onRefreshTimebars" text="Refresh timebars" />
@@ -112,5 +113,6 @@
       </Label>
       <CheckBox fx:id="cbUptrend" layoutX="943.0" layoutY="842.0" mnemonicParsing="false" onAction="#onUptrendChanged" prefHeight="17.0" prefWidth="80.0" text="UP TREND" />
       <CheckBox fx:id="cbConfirmCancel" layoutX="283.0" layoutY="841.0" mnemonicParsing="false" onAction="#onConfirmCancelChanged" prefHeight="17.0" prefWidth="104.0" text="confirm cancel" />
+      <Button layoutX="519.0" layoutY="270.0" mnemonicParsing="false" onAction="#onRefreshMd" text="Refresh live md" />
    </children>
 </AnchorPane>
