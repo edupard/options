@@ -795,8 +795,17 @@ public class MainController {
                     lblProgress.setTextFill(Color.RED);
                     break;
             }
+            if (AmendmentProcess.isTerminalStage(stage)) {
+                btnRun.setDisable(false);
+            }
+            else {
+                btnRun.setDisable(true);
+            }
         });
     }
+
+    @FXML
+    private Button btnRun;
 
     @FXML
     private Button btnStartStop;

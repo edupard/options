@@ -1,6 +1,7 @@
 package com.skywind.delta_hedger.actors;
 
 import java.util.*;
+import java.util.stream.Collectors;
 
 
 public class AmendmentProcess {
@@ -85,8 +86,16 @@ public class AmendmentProcess {
     }
 
     public void setTargetOrderQueue(List<TargetOrder> targetOrderQueue) {
-        this.targetOrderQueue.addAll(targetOrderQueue);
-        this.targetOrders.addAll(targetOrderQueue);
+        List<TargetOrder> orderedTargetOrders = targetOrders.stream()
+                .filter((to) -> Math.abs(to.getQty()) > 0)
+                .sorted(Comparator.comparing((to) -> to.getIdx()))
+                .collect(Collectors.toList());
+        this.targetOrderQueue.addAll(orderedTargetOrders);
+        this.targetOrders.addAll(orderedTargetOrders);
+
+
+
+
     }
 
     public TargetOrder getNextTargetOrder() {
@@ -171,7 +180,7 @@ public class AmendmentProcess {
         return targetOrders;
     }
 
-    public boolean isFinished() {
+    public static boolean isTerminalStage(Stage currentStage) {
         return currentStage == Stage.PYTHON_FAILED ||
                 currentStage == Stage.ORDER_REJECTED ||
                 currentStage == Stage.COMPLETED ||
@@ -179,5 +188,9 @@ public class AmendmentProcess {
                 currentStage == Stage.PYTHON_DATA_FAILURE ||
                 currentStage == Stage.HMD_FAILURE ||
                 currentStage == Stage.INTERRUPTED_BY_DISCONNECT;
+    }
+
+    public boolean isFinished() {
+        return isTerminalStage(currentStage);
     }
 }

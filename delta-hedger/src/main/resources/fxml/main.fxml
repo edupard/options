@@ -70,7 +70,7 @@
       </TableView>
       <Button layoutX="57.0" layoutY="787.0" mnemonicParsing="false" onAction="#onRefreshOpenOrders" text="Refresh open orders" />
       <CheckBox fx:id="cbIncludeManualOrders" layoutX="209.0" layoutY="791.0" mnemonicParsing="false" onAction="#onIncludeManualOrdersChanged" selected="true" text="include manual orders" />
-      <Button layoutX="57.0" layoutY="877.0" mnemonicParsing="false" onAction="#onRunPython" text="Run" />
+      <Button fx:id="btnRun" layoutX="57.0" layoutY="877.0" mnemonicParsing="false" onAction="#onRunPython" text="Run" />
       <Label fx:id="lblProgress" layoutX="511.0" layoutY="881.0" prefHeight="17.0" prefWidth="472.0" text="LBL_PROGRESS">
          <font>
             <Font name="System Bold" size="12.0" />

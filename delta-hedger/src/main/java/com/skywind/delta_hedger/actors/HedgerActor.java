@@ -904,11 +904,7 @@ public class HedgerActor extends AbstractActor {
     }
 
     private void prepareTargetOrdersList() {
-        List<TargetOrder> orderedTargetOrders = targetOrders.stream()
-                .filter((to) -> Math.abs(to.getQty()) > 0)
-                .sorted(Comparator.comparing((to) -> to.getIdx()))
-                .collect(Collectors.toList());
-        amendmentProcess.setTargetOrderQueue(orderedTargetOrders);
+        amendmentProcess.setTargetOrderQueue(targetOrders);
     }
 
     private Contract getContract(String code) {

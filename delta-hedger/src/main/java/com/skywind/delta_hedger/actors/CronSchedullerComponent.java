@@ -3,6 +3,8 @@ package com.skywind.delta_hedger.actors;
 import akka.actor.ActorSelection;
 import akka.actor.ActorSystem;
 import com.skywind.delta_hedger.ui.MainController;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.env.Environment;
@@ -23,6 +25,8 @@ import java.util.*;
 @Configuration
 @EnableScheduling
 public class CronSchedullerComponent implements SchedulingConfigurer {
+
+    private final Logger LOGGER = LoggerFactory.getLogger(CronSchedullerComponent.class);
 
     @Autowired
     private Environment env;
@@ -88,8 +92,9 @@ public class CronSchedullerComponent implements SchedulingConfigurer {
             ct = new CronTask(
                     () -> {
                         controller.onSciptParams(c.scriptParam);
-                        hedgerActor.tell(new HedgerActor.RunAmendmentProcess(c.targetUnderlyings, c.scriptParam, HedgerActor.RunAmendmentProcess.TriggerType.CRON), null);
                         controller.changeTriggerOnTrade(c.triggerOnTrade);
+                        hedgerActor.tell(new HedgerActor.RunAmendmentProcess(c.targetUnderlyings, c.scriptParam, HedgerActor.RunAmendmentProcess.TriggerType.CRON), null);
+                        LOGGER.debug("CRON: {}", c.scriptParam);
                     },
                     c.schedule);
             taskRegistrar.scheduleCronTask(ct);

@@ -1,5 +1,8 @@
 package com.skywind.delta_hedger.actors;
 
+import java.util.LinkedList;
+import java.util.List;
+
 public class TargetOrder {
 
     private final int idx;
@@ -8,6 +11,11 @@ public class TargetOrder {
     private final String viewPx;
     private final double qty;
     private final String orderType;
+
+
+    private Integer orderId;
+    private List<Integer> additionalOrders = new LinkedList<>();
+
 
     public TargetOrder(int idx, String code, double px, String viewPx, double qty, String orderType) {
         this.idx = idx;
