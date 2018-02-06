@@ -5,6 +5,13 @@ import java.util.List;
 
 public class TargetOrder {
 
+    public static enum State {
+        NOT_SUBMITED_YET,
+        SUBMITTED,
+        REJECTED,
+        FILLED,
+    }
+
     private final int idx;
     private final String code;
     private final double px;
@@ -13,9 +20,17 @@ public class TargetOrder {
     private final String orderType;
 
 
+    private State state = State.NOT_SUBMITED_YET;
     private Integer orderId;
     private List<Integer> additionalOrders = new LinkedList<>();
 
+    public State getState() {
+        return state;
+    }
+
+    public void setState(State state) {
+        this.state = state;
+    }
 
     public TargetOrder(int idx, String code, double px, String viewPx, double qty, String orderType) {
         this.idx = idx;

@@ -5,36 +5,6 @@ import java.util.stream.Collectors;
 
 
 public class AmendmentProcess {
-
-    public static final class LevelInfo {
-
-        public enum LevelOrderState {
-            NOT_SUBMITTED,
-            SUBMITTED,
-            REJECTED,
-            FILLED
-        }
-
-        private final TargetOrder to;
-        private LevelOrderState state = LevelOrderState.NOT_SUBMITTED;
-        private Integer orderId = null;
-
-        public LevelInfo(TargetOrder to) {
-            this.to = to;
-        }
-    }
-
-
-    public static class SymbolOrders {
-        private final String localSymbol;
-        private List<LevelInfo> levels = new LinkedList<>();
-
-        public SymbolOrders(String localSymbol) {
-            this.localSymbol = localSymbol;
-        }
-    }
-
-
     private Map<Integer, TargetOrder> placedOrders = new HashMap<>();
 
     private LinkedList<TargetOrder> targetOrderQueue = new LinkedList<>();
@@ -59,9 +29,7 @@ public class AmendmentProcess {
         return histReqIds.isEmpty();
     }
 
-    public void placeOrder(int orderId, TargetOrder to) {
-        placedOrders.put(orderId, to);
-    }
+
 
     public TargetOrder getTargetOrder(int orderId) {
         return placedOrders.get(orderId);
@@ -85,17 +53,58 @@ public class AmendmentProcess {
         return cancelledOrders.isEmpty();
     }
 
-    public void setTargetOrderQueue(List<TargetOrder> targetOrderQueue) {
+    public void processTargetOrders(List<TargetOrder> targetOrders) {
         List<TargetOrder> orderedTargetOrders = targetOrders.stream()
                 .filter((to) -> Math.abs(to.getQty()) > 0)
                 .sorted(Comparator.comparing((to) -> to.getIdx()))
                 .collect(Collectors.toList());
         this.targetOrderQueue.addAll(orderedTargetOrders);
         this.targetOrders.addAll(orderedTargetOrders);
+    }
 
+    public void onOrderPlaced(int orderId, TargetOrder to) {
+        placedOrders.put(orderId, to);
+        to.setState(TargetOrder.State.SUBMITTED);
+    }
 
+    public void onOrderRejected(int orderId){
+        TargetOrder to = getTargetOrder(orderId);
+        to.setState(TargetOrder.State.REJECTED);
+    }
 
-
+    public List<AdditionalOrder> onOrderFilled(int orderId) {
+        List<AdditionalOrder> result = new LinkedList<>();
+        TargetOrder filledTo = getTargetOrder(orderId);
+        //not a target order
+        if (filledTo == null) {
+            return result;
+        }
+        if (filledTo.getState() == TargetOrder.State.FILLED) {
+            return result;
+        }
+        filledTo.setState(TargetOrder.State.FILLED);
+        boolean buy = filledTo.getQty() > 0;
+        List<TargetOrder> oppositeOrders = buy ?
+                targetOrders.stream()
+                        .filter((to) -> to.getCode().equals(filledTo.getCode()))
+                        .filter((to) -> to.getQty() < 0)
+                        .sorted(Comparator.comparing((to) -> -to.getPx()))
+                        .collect(Collectors.toList())
+                :
+                targetOrders.stream()
+                        .filter((to) -> to.getCode().equals(filledTo.getCode()))
+                        .filter((to) -> to.getQty() > 0)
+                        .sorted(Comparator.comparing((to) -> to.getPx()))
+                        .collect(Collectors.toList());
+        for (TargetOrder to: oppositeOrders) {
+            if (to.getState() == TargetOrder.State.FILLED) {
+                result.add(new AdditionalOrder(AdditionalOrder.OrderType.MAIN, to, to.getQty()));
+            }
+        }
+        if (!oppositeOrders.isEmpty()) {
+            result.add(new AdditionalOrder(AdditionalOrder.OrderType.ADDITIONAL, oppositeOrders.get(0), -filledTo.getQty()));
+        }
+        return result;
     }
 
     public TargetOrder getNextTargetOrder() {

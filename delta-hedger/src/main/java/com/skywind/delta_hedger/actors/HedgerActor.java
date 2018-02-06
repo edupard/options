@@ -864,7 +864,7 @@ public class HedgerActor extends AbstractActor {
                         if (controller.isStarted()) {
                             TargetOrder to = amendmentProcess.getNextTargetOrder();
                             if (to != null) {
-                                amendmentProcess.placeOrder(placeTargetOrder(to), to);
+                                amendmentProcess.onOrderPlaced(placeTargetOrder(to), to);
                                 amendmentProcess.setCurrentStage(AmendmentProcess.Stage.WAIT_TARGET_ORDER_STATE);
                             } else {
                                 amendmentProcess.setCurrentStage(AmendmentProcess.Stage.COMPLETED);
@@ -904,7 +904,7 @@ public class HedgerActor extends AbstractActor {
     }
 
     private void prepareTargetOrdersList() {
-        amendmentProcess.setTargetOrderQueue(targetOrders);
+        amendmentProcess.processTargetOrders(targetOrders);
     }
 
     private Contract getContract(String code) {
