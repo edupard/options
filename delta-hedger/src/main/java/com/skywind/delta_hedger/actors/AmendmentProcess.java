@@ -1,13 +1,41 @@
 package com.skywind.delta_hedger.actors;
 
-import java.util.HashSet;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.Set;
+import java.util.*;
+
 
 public class AmendmentProcess {
 
-    private Integer placedOrder = null;
+    public static final class LevelInfo {
+
+        public enum LevelOrderState {
+            NOT_SUBMITTED,
+            SUBMITTED,
+            REJECTED,
+            FILLED
+        }
+
+        private final TargetOrder to;
+        private LevelOrderState state = LevelOrderState.NOT_SUBMITTED;
+        private Integer orderId = null;
+
+        public LevelInfo(TargetOrder to) {
+            this.to = to;
+        }
+    }
+
+
+    public static class SymbolOrders {
+        private final String localSymbol;
+        private List<LevelInfo> levels = new LinkedList<>();
+
+        public SymbolOrders(String localSymbol) {
+            this.localSymbol = localSymbol;
+        }
+    }
+
+
+    private Map<Integer, TargetOrder> placedOrders = new HashMap<>();
+
     private LinkedList<TargetOrder> targetOrderQueue = new LinkedList<>();
     private LinkedList<TargetOrder> targetOrders = new LinkedList<>();
 
@@ -30,15 +58,12 @@ public class AmendmentProcess {
         return histReqIds.isEmpty();
     }
 
-    public void placeOrder(int orderId) {
-        placedOrder = orderId;
+    public void placeOrder(int orderId, TargetOrder to) {
+        placedOrders.put(orderId, to);
     }
 
-    public boolean isPlacedOrder(int orderId) {
-        if (placedOrder != null) {
-            return placedOrder == orderId;
-        }
-        return false;
+    public TargetOrder getTargetOrder(int orderId) {
+        return placedOrders.get(orderId);
     }
 
     private final Set<Integer> cancelledOrders = new HashSet<>();

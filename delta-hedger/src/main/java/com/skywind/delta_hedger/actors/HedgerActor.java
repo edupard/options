@@ -548,7 +548,9 @@ public class HedgerActor extends AbstractActor {
                 try {
                     switch (amendmentProcess.getCurrentStage()) {
                         case WAIT_TARGET_ORDER_STATE:
-                            if (amendmentProcess.isPlacedOrder(m.getId())) {
+                            TargetOrder targetOrder = amendmentProcess.getTargetOrder(m.getId());
+
+                            if (targetOrder != null) {
                                 // Send email
                                 String message = "Options: amendment process interrupted by disconnect";
                                 emailActorSelection.tell(new EmailActor.Email(message, message), self());
@@ -862,7 +864,7 @@ public class HedgerActor extends AbstractActor {
                         if (controller.isStarted()) {
                             TargetOrder to = amendmentProcess.getNextTargetOrder();
                             if (to != null) {
-                                amendmentProcess.placeOrder(placeTargetOrder(to));
+                                amendmentProcess.placeOrder(placeTargetOrder(to), to);
                                 amendmentProcess.setCurrentStage(AmendmentProcess.Stage.WAIT_TARGET_ORDER_STATE);
                             } else {
                                 amendmentProcess.setCurrentStage(AmendmentProcess.Stage.COMPLETED);
@@ -1221,14 +1223,19 @@ public class HedgerActor extends AbstractActor {
         }
     }
 
-    private static final Set<OrderStatus> acceptedOrderStatuses = new HashSet<>();
+    private static final Set<OrderStatus> acceptedOrFilledOrCancelledOrderStatuses = new HashSet<>();
+    private static final Set<OrderStatus> filledOrCancelledOrderStatuses = new HashSet<>();
 
     static {
-        acceptedOrderStatuses.add(OrderStatus.Submitted);
-        acceptedOrderStatuses.add(OrderStatus.PreSubmitted);
-        acceptedOrderStatuses.add(OrderStatus.ApiCancelled);
-        acceptedOrderStatuses.add(OrderStatus.Cancelled);
-        acceptedOrderStatuses.add(OrderStatus.Filled);
+        acceptedOrFilledOrCancelledOrderStatuses.add(OrderStatus.Submitted);
+        acceptedOrFilledOrCancelledOrderStatuses.add(OrderStatus.PreSubmitted);
+        acceptedOrFilledOrCancelledOrderStatuses.add(OrderStatus.ApiCancelled);
+        acceptedOrFilledOrCancelledOrderStatuses.add(OrderStatus.Cancelled);
+        acceptedOrFilledOrCancelledOrderStatuses.add(OrderStatus.Filled);
+
+        filledOrCancelledOrderStatuses.add(OrderStatus.Cancelled);
+        filledOrCancelledOrderStatuses.add(OrderStatus.Filled);
+
     }
 
     private void onOrderStatus(IbGateway.OrderStatus m) {
@@ -1243,17 +1250,27 @@ public class HedgerActor extends AbstractActor {
 
             if (amendmentProcess != null) {
                 try {
-                    if (amendmentProcess.isPlacedOrder(m.getOrderId())) {
+                    TargetOrder targetOrder = amendmentProcess.getTargetOrder(m.getOrderId());
+                    if (targetOrder != null) {
                         if (orderStatus == OrderStatus.Inactive) {
                             String message = "Options: order rejected";
                             emailActorSelection.tell(new EmailActor.Email(message, message), self());
                             amendmentProcess.setCurrentStage(AmendmentProcess.Stage.ORDER_REJECTED);
-                        } else if (acceptedOrderStatuses.contains(orderStatus)) {
-                            amendmentProcess.setCurrentStage(AmendmentProcess.Stage.PLACE_NEXT_TARGET_ORDER);
+                        } else {
+                            if (targetOrder.getOrderType().equals("MKT")) {
+                                if (filledOrCancelledOrderStatuses.contains(orderStatus)) {
+                                    amendmentProcess.setCurrentStage(AmendmentProcess.Stage.PLACE_NEXT_TARGET_ORDER);
+                                }
+                            }
+                            else {
+                                if (acceptedOrFilledOrCancelledOrderStatuses.contains(orderStatus)) {
+                                    amendmentProcess.setCurrentStage(AmendmentProcess.Stage.PLACE_NEXT_TARGET_ORDER);
+                                }
+                            }
                         }
                     }
                     if (amendmentProcess.isCancelledOrder(m.getOrderId())) {
-                        if (orderStatus == OrderStatus.Cancelled) {
+                        if (orderStatus == OrderStatus.Cancelled || orderStatus == OrderStatus.Filled) {
                             amendmentProcess.onCancelComplete(m.getOrderId());
                             if (amendmentProcess.isAllOrdersCancelled()) {
                                 amendmentProcess.setCurrentStage(AmendmentProcess.Stage.CALL_PY_SCRIPT);
