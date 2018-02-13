@@ -1,5 +1,7 @@
 package com.skywind.delta_hedger.actors;
 
+import com.ib.client.OrderStatus;
+
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -28,8 +30,6 @@ public class AmendmentProcess {
     public boolean isAllHistReqCompleted() {
         return histReqIds.isEmpty();
     }
-
-
 
     public TargetOrder getTargetOrder(int orderId) {
         return placedOrders.get(orderId);
@@ -62,27 +62,20 @@ public class AmendmentProcess {
         this.targetOrders.addAll(orderedTargetOrders);
     }
 
-    public void onOrderPlaced(int orderId, TargetOrder to) {
+    public void onOrderPlaced(int orderId, TargetOrder to, PlacedOrderType ot) {
         placedOrders.put(orderId, to);
-        to.setState(TargetOrder.State.SUBMITTED);
+        to.onOrderSubmitted(orderId, ot);
     }
 
-    public void onOrderRejected(int orderId){
-        TargetOrder to = getTargetOrder(orderId);
-        to.setState(TargetOrder.State.REJECTED);
-    }
-
-    public List<AdditionalOrder> onOrderFilled(int orderId) {
+    public List<AdditionalOrder> onOrderStatus(int orderId, OrderStatus os) {
         List<AdditionalOrder> result = new LinkedList<>();
+
         TargetOrder filledTo = getTargetOrder(orderId);
-        //not a target order
         if (filledTo == null) {
             return result;
         }
-        if (filledTo.getState() == TargetOrder.State.FILLED) {
-            return result;
-        }
-        filledTo.setState(TargetOrder.State.FILLED);
+
+
         boolean buy = filledTo.getQty() > 0;
         List<TargetOrder> oppositeOrders = buy ?
                 targetOrders.stream()
@@ -96,13 +89,29 @@ public class AmendmentProcess {
                         .filter((to) -> to.getQty() > 0)
                         .sorted(Comparator.comparing((to) -> to.getPx()))
                         .collect(Collectors.toList());
-        for (TargetOrder to: oppositeOrders) {
-            if (to.getState() == TargetOrder.State.FILLED) {
-                result.add(new AdditionalOrder(AdditionalOrder.OrderType.MAIN, to, to.getQty()));
+
+        if (filledTo.isMainOrder(orderId)) {
+            TargetOrder.OrderState mainOrderState = filledTo.getMainOrderState();
+            if (os == OrderStatus.Filled && mainOrderState.getOrderStatus() != OrderStatus.Filled) {
+                if (!oppositeOrders.isEmpty()) {
+                    result.add(new AdditionalOrder(PlacedOrderType.ADDITIONAL, oppositeOrders.get(0), -filledTo.getQty()));
+                }
+                for (TargetOrder to : oppositeOrders) {
+                    TargetOrder.OrderState orderState = to.getMainOrderState();
+                    if (orderState != null) {
+                        if (orderState.getOrderStatus() == OrderStatus.Filled) {
+                            result.add(new AdditionalOrder(PlacedOrderType.MAIN, to, to.getQty()));
+                        }
+                    }
+                }
             }
+            mainOrderState.setOrderStatus(os);
         }
-        if (!oppositeOrders.isEmpty()) {
-            result.add(new AdditionalOrder(AdditionalOrder.OrderType.ADDITIONAL, oppositeOrders.get(0), -filledTo.getQty()));
+        else {
+            TargetOrder.OrderState additionalOrderState = filledTo.getAdditionalOrderState(orderId);
+            if (additionalOrderState != null) {
+                additionalOrderState.setOrderStatus(os);
+            }
         }
         return result;
     }
@@ -115,6 +124,8 @@ public class AmendmentProcess {
         }
         return null;
     }
+
+
 
     public enum Stage {
         REFRESH_TIME_BARS,

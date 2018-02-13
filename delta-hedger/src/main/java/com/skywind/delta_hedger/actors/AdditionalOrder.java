@@ -2,17 +2,24 @@ package com.skywind.delta_hedger.actors;
 
 public class AdditionalOrder {
 
-    public enum OrderType {
-        MAIN,
-        ADDITIONAL
-    }
-
-    private final OrderType orderType;
+    private final PlacedOrderType placedOrderType;
     private final TargetOrder targetOrder;
     private final double qty;
 
-    public AdditionalOrder(OrderType orderType, TargetOrder targetOrder, double qty) {
-        this.orderType = orderType;
+    public PlacedOrderType getPlacedOrderType() {
+        return placedOrderType;
+    }
+
+    public TargetOrder getTargetOrder() {
+        return targetOrder;
+    }
+
+    public double getQty() {
+        return qty;
+    }
+
+    public AdditionalOrder(PlacedOrderType placedOrderType, TargetOrder targetOrder, double qty) {
+        this.placedOrderType = placedOrderType;
         this.targetOrder = targetOrder;
         this.qty = qty;
     }

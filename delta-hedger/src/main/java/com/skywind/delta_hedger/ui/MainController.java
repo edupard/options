@@ -218,8 +218,41 @@ public class MainController {
         });
     }
 
+    public void onConfirmAdditionalOrders(List<AdditionalOrder> additionalOrders) {
+        Platform.runLater(() -> {
+            StringBuilder sb = new StringBuilder();
+            for (AdditionalOrder ao : additionalOrders) {
+                if (sb.length() != 0) {
+                    sb.append(System.lineSeparator());
+                }
+                sb.append(String.format("%.0f %s", ao.getQty(), ao.getTargetOrder().getViewPx()));
+            }
+
+            Alert alert = new Alert(Alert.AlertType.CONFIRMATION);
+            alert.setTitle("Do you really want to place additional orders?");
+            alert.setContentText(sb.toString());
+
+            ButtonType buttonTypeYes = new ButtonType("Yes");
+            ButtonType buttonTypeNo = new ButtonType("No", ButtonBar.ButtonData.CANCEL_CLOSE);
+
+            alert.getButtonTypes().setAll(buttonTypeYes, buttonTypeNo);
+            alert.initModality(Modality.NONE);
+
+            alert.setResultConverter(new Callback<ButtonType, ButtonType>() {
+                @Override
+                public ButtonType call(ButtonType param) {
+                    if (param == buttonTypeYes) {
+                        hedgerActor.tell(new HedgerActor.PlaceAdditionalOrders(additionalOrders), null);
+                    }
+                    return param;
+                }
+            });
+            alert.show();
+        });
+    }
+
     public void onConfirmOrderPlace(String message) {
-        Platform.runLater(()->{
+        Platform.runLater(() -> {
             Alert alert = new Alert(Alert.AlertType.CONFIRMATION);
             alert.setTitle("Do you really want to place orders?");
             alert.setContentText(message);
@@ -274,13 +307,13 @@ public class MainController {
     }
 
     public void onSciptParams(String scriptParam) {
-        Platform.runLater(()->{
+        Platform.runLater(() -> {
             tfParam.setText(scriptParam);
         });
     }
 
     public void onPortfolioResult(HedgerActor.PortfolioResult result) {
-        Platform.runLater(()->{
+        Platform.runLater(() -> {
             if (result == HedgerActor.PortfolioResult.SUCCESS) {
                 return;
             }
@@ -292,7 +325,7 @@ public class MainController {
     }
 
     public void onClearTimeBars() {
-        Platform.runLater(()->{
+        Platform.runLater(() -> {
             timeBarsDataMap.clear();
             timeBarData.clear();
         });
@@ -307,7 +340,9 @@ public class MainController {
             this.fullUpdate = fullUpdate;
         }
 
-        public static enum Action {UPDATE, DELETE};
+        public static enum Action {UPDATE, DELETE}
+
+        ;
 
         public static final class BatchElement {
             private final Action action;
@@ -419,7 +454,6 @@ public class MainController {
 //        });
 
 
-
         colUnderCode.setCellValueFactory(cellData -> cellData.getValue().underLocalSymbolProperty());
         colExpiry.setCellValueFactory(cellData -> cellData.getValue().expiryProperty());
 
@@ -517,6 +551,19 @@ public class MainController {
         sortedTimeBarData.comparatorProperty().bind(tblTimeBars.comparatorProperty());
         tblTimeBars.setItems(sortedTimeBarData);
         setVolLabel();
+
+        ObservableList<TradeAction> aTradeActions = FXCollections.observableArrayList();
+        for (TradeAction ta : TradeAction.values()) {
+            aTradeActions.add(ta);
+        }
+        cbTradeAction.setItems(aTradeActions);
+        cbTradeAction.getSelectionModel().select(TradeAction.NONE);
+
+        cbTradeAction.getSelectionModel()
+                .selectedItemProperty()
+                .addListener((ObservableValue<? extends TradeAction> observable, TradeAction oldValue, TradeAction newValue) -> {
+                    tradeAction = newValue;
+                });
     }
 
     public void onPositionsUpdate(UpdateUiPositionsBatch uiUpdates) {
@@ -551,7 +598,7 @@ public class MainController {
     @FXML
     private Label lblVolMissing;
 
-    private void saveApplicationProperties () {
+    private void saveApplicationProperties() {
         try {
             // create and set properties into properties object
             Properties props = new Properties();
@@ -559,11 +606,11 @@ public class MainController {
             props.setProperty("uptrend", new Boolean(cbUptrend.isSelected()).toString());
             // get or create the file
             File f = new File("user.properties");
-            OutputStream out = new FileOutputStream( f );
+            OutputStream out = new FileOutputStream(f);
             // write into it
             DefaultPropertiesPersister p = new DefaultPropertiesPersister();
             p.store(props, out, "");
-        } catch (Exception e ) {
+        } catch (Exception e) {
             e.printStackTrace();
         }
     }
@@ -572,14 +619,13 @@ public class MainController {
         boolean allVolFilled = true;
         for (PositionEntry positionEntry : positionsData) {
             if (positionEntry.volProperty().get() == 0.0d && positionEntry.getPosition().getContract().secType() == Types.SecType.FOP) {
-                allVolFilled =false;
+                allVolFilled = false;
                 break;
             }
         }
         if (!allVolFilled) {
             lblVolMissing.setText("Zero vol");
-        }
-        else {
+        } else {
             lblVolMissing.setText("");
         }
     }
@@ -698,26 +744,22 @@ public class MainController {
         return includeFutures;
     }
 
-    @FXML
-    private CheckBox cbTriggerOnTrade;
 
-    private volatile boolean triggerOnTrade = false;
+    private volatile TradeAction tradeAction = TradeAction.NONE;
 
-    @FXML
-    public void onTriggerOnTradeChanged() {
-        triggerOnTrade = cbTriggerOnTrade.isSelected();
+    public TradeAction getTradeAction() {
+        return tradeAction;
     }
 
-    public boolean isTriggerOnTrade() {
-        return triggerOnTrade;
-    }
-
-    public void changeTriggerOnTrade(boolean triggerOnTrade) {
-        this.triggerOnTrade = triggerOnTrade;
-        Platform.runLater(()->{
-            cbTriggerOnTrade.setSelected(triggerOnTrade);
+    public void setTradeAction(TradeAction tradeAction) {
+        this.tradeAction = tradeAction;
+        Platform.runLater(() -> {
+            cbTradeAction.getSelectionModel().select(tradeAction);
         });
     }
+
+    @FXML
+    private ChoiceBox<TradeAction> cbTradeAction;
 
     @FXML
     private CheckBox cbConfirmPlace;
@@ -748,7 +790,6 @@ public class MainController {
     }
 
 
-
     @FXML
     private CheckBox cbUptrend;
 
@@ -765,7 +806,7 @@ public class MainController {
     private TextField tfParam;
 
     public String getScriptParams() {
-        return tfParam.getText().equals("")? "default" : tfParam.getText();
+        return tfParam.getText().equals("") ? "default" : tfParam.getText();
     }
 
     @FXML
@@ -797,8 +838,7 @@ public class MainController {
             }
             if (AmendmentProcess.isTerminalStage(stage)) {
                 btnRun.setDisable(false);
-            }
-            else {
+            } else {
                 btnRun.setDisable(true);
             }
         });

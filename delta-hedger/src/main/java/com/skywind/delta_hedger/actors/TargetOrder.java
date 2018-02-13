@@ -1,15 +1,59 @@
 package com.skywind.delta_hedger.actors;
 
+import com.ib.client.OrderStatus;
+
 import java.util.LinkedList;
 import java.util.List;
 
 public class TargetOrder {
 
-    public static enum State {
-        NOT_SUBMITED_YET,
-        SUBMITTED,
-        REJECTED,
-        FILLED,
+    public boolean isInitialOrder(int orderId) {
+        return mainOrderState != null && mainOrderState.orderId == orderId && mainOrderState.placedOrderType == PlacedOrderType.INITIAL;
+    }
+
+    public boolean isMainOrder(int orderId) {
+        return mainOrderState != null && mainOrderState.orderId == orderId;
+    }
+
+    public OrderState getMainOrderState() {
+        return mainOrderState;
+    }
+
+    public OrderState getAdditionalOrderState(int orderId) {
+        for (OrderState os: additionalOrderStates){
+            if (os.orderId == orderId) {
+                return os;
+            }
+        }
+        return null;
+    }
+
+    public static class OrderState {
+
+        private final PlacedOrderType placedOrderType;
+        private final int orderId;
+        private OrderStatus orderStatus = OrderStatus.Unknown;
+
+        public OrderState(Integer orderId, PlacedOrderType placedOrderType) {
+            this.placedOrderType = placedOrderType;
+            this.orderId = orderId;
+        }
+
+        public PlacedOrderType getPlacedOrderType() {
+            return placedOrderType;
+        }
+
+        public int getOrderId() {
+            return orderId;
+        }
+
+        public OrderStatus getOrderStatus() {
+            return orderStatus;
+        }
+
+        public void setOrderStatus(OrderStatus orderStatus) {
+            this.orderStatus = orderStatus;
+        }
     }
 
     private final int idx;
@@ -20,16 +64,20 @@ public class TargetOrder {
     private final String orderType;
 
 
-    private State state = State.NOT_SUBMITED_YET;
-    private Integer orderId;
-    private List<Integer> additionalOrders = new LinkedList<>();
+    private OrderState mainOrderState = null;
+    private List<OrderState> additionalOrderStates = new LinkedList<>();
 
-    public State getState() {
-        return state;
-    }
+    public void onOrderSubmitted(int orderId, PlacedOrderType ot) {
+        switch (ot) {
+            case INITIAL:
+            case MAIN:
+                mainOrderState = new OrderState(orderId, ot);
+                break;
+            case ADDITIONAL:
+                additionalOrderStates.add(new OrderState(orderId, ot));
+                break;
+        }
 
-    public void setState(State state) {
-        this.state = state;
     }
 
     public TargetOrder(int idx, String code, double px, String viewPx, double qty, String orderType) {

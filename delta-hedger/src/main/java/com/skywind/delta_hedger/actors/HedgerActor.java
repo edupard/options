@@ -250,6 +250,19 @@ public class HedgerActor extends AbstractActor {
     }
 
 
+    public static final class PlaceAdditionalOrders {
+        private final List<AdditionalOrder> additionalOrders;
+
+        public List<AdditionalOrder> getAdditionalOrders() {
+            return additionalOrders;
+        }
+
+        public PlaceAdditionalOrders(List<AdditionalOrder> additionalOrders) {
+            this.additionalOrders = additionalOrders;
+        }
+    }
+
+
     @Override
     public Receive createReceive() {
         return receiveBuilder()
@@ -383,6 +396,9 @@ public class HedgerActor extends AbstractActor {
                 })
                 .match(RefreshMd.class, m -> {
                     onRefreshMd(m);
+                })
+                .match(PlaceAdditionalOrders.class, m -> {
+                    onPlaceAdditionalOrders(m);
                 })
                 .matchAny(m -> recievedUnknown(m))
                 .build();
@@ -847,11 +863,12 @@ public class HedgerActor extends AbstractActor {
                             }
                             if (maxSizeTo != null) {
                                 sb.append(String.format("Max qty: %.0f", maxSizeTo.getQty()));
-                                sb.append(System.lineSeparator());
                             }
                             for (TargetOrder to : immediateExecution) {
+                                if (sb.length() != 0) {
+                                    sb.append(System.lineSeparator());
+                                }
                                 sb.append(String.format("Immediate fill %.0f %s", to.getQty(), to.getViewPx()));
-                                sb.append(System.lineSeparator());
                             }
 
                             controller.onConfirmOrderPlace(sb.toString());
@@ -864,7 +881,7 @@ public class HedgerActor extends AbstractActor {
                         if (controller.isStarted()) {
                             TargetOrder to = amendmentProcess.getNextTargetOrder();
                             if (to != null) {
-                                amendmentProcess.onOrderPlaced(placeTargetOrder(to), to);
+                                amendmentProcess.onOrderPlaced(placeTargetOrder(to), to, PlacedOrderType.INITIAL);
                                 amendmentProcess.setCurrentStage(AmendmentProcess.Stage.WAIT_TARGET_ORDER_STATE);
                             } else {
                                 amendmentProcess.setCurrentStage(AmendmentProcess.Stage.COMPLETED);
@@ -896,6 +913,20 @@ public class HedgerActor extends AbstractActor {
         }
     }
 
+    private void onPlaceAdditionalOrders(PlaceAdditionalOrders m) {
+        if (amendmentProcess != null) {
+            placeAdditionalOrders(m.getAdditionalOrders());
+        }
+    }
+
+    private void placeAdditionalOrders(List<AdditionalOrder> additionalOrders) {
+        if (controller.isStarted()) {
+            for (AdditionalOrder ao : additionalOrders) {
+                amendmentProcess.onOrderPlaced(placeAdditionalOrder(ao), ao.getTargetOrder(), ao.getPlacedOrderType());
+            }
+        }
+    }
+
     private void cancelAllOrders() {
         for (Integer orderId : openOrders.keySet()) {
             ibGateway.getClientSocket().cancelOrder(orderId);
@@ -914,6 +945,11 @@ public class HedgerActor extends AbstractActor {
         contract.exchange(exchange);
         contract.currency(ccy);
         return contract;
+    }
+
+    private int placeAdditionalOrder(AdditionalOrder ao) {
+        Contract contract = getContract(ao.getTargetOrder().getCode());
+        return placeOrderImpl(contract, ao.getQty() > 0 ? Types.Action.BUY : Types.Action.SELL, Math.abs(ao.getQty()), PriceUtils.convertPrice(ao.getTargetOrder().getViewPx(), futPriceCoeff), OrderType.STP);
     }
 
     private int placeTargetOrder(TargetOrder to) {
@@ -1246,25 +1282,7 @@ public class HedgerActor extends AbstractActor {
 
             if (amendmentProcess != null) {
                 try {
-                    TargetOrder targetOrder = amendmentProcess.getTargetOrder(m.getOrderId());
-                    if (targetOrder != null) {
-                        if (orderStatus == OrderStatus.Inactive) {
-                            String message = "Options: order rejected";
-                            emailActorSelection.tell(new EmailActor.Email(message, message), self());
-                            amendmentProcess.setCurrentStage(AmendmentProcess.Stage.ORDER_REJECTED);
-                        } else {
-                            if (targetOrder.getOrderType().equals("MKT")) {
-                                if (filledOrCancelledOrderStatuses.contains(orderStatus)) {
-                                    amendmentProcess.setCurrentStage(AmendmentProcess.Stage.PLACE_NEXT_TARGET_ORDER);
-                                }
-                            }
-                            else {
-                                if (acceptedOrFilledOrCancelledOrderStatuses.contains(orderStatus)) {
-                                    amendmentProcess.setCurrentStage(AmendmentProcess.Stage.PLACE_NEXT_TARGET_ORDER);
-                                }
-                            }
-                        }
-                    }
+                    // Cancelled order: if terminal state -> call python
                     if (amendmentProcess.isCancelledOrder(m.getOrderId())) {
                         if (orderStatus == OrderStatus.Cancelled || orderStatus == OrderStatus.Filled) {
                             amendmentProcess.onCancelComplete(m.getOrderId());
@@ -1273,6 +1291,38 @@ public class HedgerActor extends AbstractActor {
                             }
                         }
                     }
+                    // Get target order
+                    TargetOrder targetOrder = amendmentProcess.getTargetOrder(m.getOrderId());
+                    if (targetOrder != null) {
+                        if (targetOrder.isInitialOrder(m.getOrderId())) {
+                            if (orderStatus == OrderStatus.Inactive) {
+                                String message = "Options: order rejected";
+                                emailActorSelection.tell(new EmailActor.Email(message, message), self());
+                                amendmentProcess.setCurrentStage(AmendmentProcess.Stage.ORDER_REJECTED);
+                            } else {
+                                if (targetOrder.getOrderType().equals("MKT")) {
+                                    if (filledOrCancelledOrderStatuses.contains(orderStatus)) {
+                                        amendmentProcess.setCurrentStage(AmendmentProcess.Stage.PLACE_NEXT_TARGET_ORDER);
+                                    }
+                                }
+                                else {
+                                    if (acceptedOrFilledOrCancelledOrderStatuses.contains(orderStatus)) {
+                                        amendmentProcess.setCurrentStage(AmendmentProcess.Stage.PLACE_NEXT_TARGET_ORDER);
+                                    }
+                                }
+                            }
+                        }
+                        List<AdditionalOrder> additionalOrders = amendmentProcess.onOrderStatus(m.getOrderId(), orderStatus);
+                        if (controller.getTradeAction() == TradeAction.JAVA && controller.isStarted()) {
+                            if (controller.isConfirmPlace()) {
+                                controller.onConfirmAdditionalOrders(additionalOrders);
+                            }
+                            else {
+                                placeAdditionalOrders(additionalOrders);
+                            }
+                        }
+                    }
+
                 } finally {
                     doNextAmendmentProcessStage();
                 }
@@ -1303,6 +1353,8 @@ public class HedgerActor extends AbstractActor {
             controller.onOpenOrders(oo);
         }
     }
+
+
 
     private void onOpenOrderEnd(IbGateway.OpenOrderEnd m) {
 
@@ -1382,7 +1434,7 @@ public class HedgerActor extends AbstractActor {
 //
 //                }
                 // trigger amendment on fut trades only
-                if (controller.isTriggerOnTrade() && m.getContract().secType() == Types.SecType.FUT) {
+                if (controller.getTradeAction() == TradeAction.PYTHON && m.getContract().secType() == Types.SecType.FUT) {
                     HashSet<String> targetUnderlyings = new HashSet<>();
                     targetUnderlyings.add(m.getContract().localSymbol());
                     self().tell(new RunAmendmentProcess(targetUnderlyings, controller.getScriptParams(), RunAmendmentProcess.TriggerType.TRADE), self());
@@ -1961,6 +2013,7 @@ public class HedgerActor extends AbstractActor {
             StorageUtils.storePositions(positions);
         }
     }
+
 
 
 }
