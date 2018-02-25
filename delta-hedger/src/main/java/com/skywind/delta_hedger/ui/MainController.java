@@ -811,7 +811,7 @@ public class MainController {
 
     @FXML
     public void onRunPython() {
-        hedgerActor.tell(new HedgerActor.RunAmendmentProcess(new HashSet<>(), getScriptParams(), HedgerActor.RunAmendmentProcess.TriggerType.MANUAL), null);
+        hedgerActor.tell(new HedgerActor.RunAmendmentProcess(new HashSet<>(), getScriptParams(), getTradeAction(), HedgerActor.RunAmendmentProcess.TriggerType.MANUAL), null);
     }
 
     @FXML

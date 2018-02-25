@@ -115,6 +115,7 @@ public class HedgerActor extends AbstractActor {
 
         private final Set<String> targetUnderlyings;
         private final String params;
+        private final TradeAction tradeAction;
         private final TriggerType triggerType;
 
         public String getParams() {
@@ -129,10 +130,11 @@ public class HedgerActor extends AbstractActor {
             return targetUnderlyings.contains(underlyingCode);
         }
 
-        public RunAmendmentProcess(Set<String> targetUnderlyings, String params, TriggerType triggerType) {
+        public RunAmendmentProcess(Set<String> targetUnderlyings, String params, TradeAction tradeAction, TriggerType triggerType) {
             this.targetUnderlyings = targetUnderlyings;
             this.params = params;
             this.triggerType = triggerType;
+            this.tradeAction = tradeAction;
         }
 
         public boolean skipNextProcessAsUseless(RunAmendmentProcess next) {
@@ -1437,7 +1439,7 @@ public class HedgerActor extends AbstractActor {
                 if (controller.getTradeAction() == TradeAction.PYTHON && m.getContract().secType() == Types.SecType.FUT) {
                     HashSet<String> targetUnderlyings = new HashSet<>();
                     targetUnderlyings.add(m.getContract().localSymbol());
-                    self().tell(new RunAmendmentProcess(targetUnderlyings, controller.getScriptParams(), RunAmendmentProcess.TriggerType.TRADE), self());
+                    self().tell(new RunAmendmentProcess(targetUnderlyings, controller.getScriptParams(), controller.getTradeAction(), RunAmendmentProcess.TriggerType.TRADE), self());
                 }
             }
         }
@@ -1472,6 +1474,11 @@ public class HedgerActor extends AbstractActor {
         }
         if (!pendingProcesses.isEmpty()) {
             RunAmendmentProcess m = pendingProcesses.pollFirst();
+            if (m.triggerType == RunAmendmentProcess.TriggerType.CRON) {
+                controller.onSciptParams(m.params);
+                controller.setTradeAction(m.tradeAction);
+            }
+
             amendmentProcess = new AmendmentProcess(m);
             String message = String.format("Options: starting %s amendment procedure", m.getParams());
             emailActorSelection.tell(new EmailActor.Email(message, message), self());
